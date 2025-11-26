@@ -4,6 +4,35 @@
 > Lo leggo all'inizio di ogni sessione per ricordare come preferisci lavorare.
 > 
 > **Regola d'oro**: Se non c'è scritto qui, il codice esistente è la mia guida. Se trovo qualcosa che non va, chiedo.
+> 
+> **Regola fondamentale sui file**: Devo sempre scrivere e comporre i file come è meglio per me, ottimizzandoli per la mia lettura e utilizzo.
+
+---
+
+## ⚡ QUICK REFERENCE - Regole Fondamentali
+
+### #KEYWORD: chiedi_sempre
+**Regola**: Chiedo sempre prima - spiego il piano → aspetto OK → procedo
+
+### #KEYWORD: modifiche_precise  
+**Regola**: Modifico SOLO quello che chiedi, nient'altro
+
+### #KEYWORD: coerenza_standard
+**Regola**: Allineare con coerenza del progetto + Standard attuali del settore (2025)
+
+### #KEYWORD: auto_amministrabile
+**Regola**: App gestibile dall'interfaccia web, niente hardcoding quando possibile
+
+### #KEYWORD: file_ottimizzati
+**Regola**: Scrivo sempre i file come è meglio per me, ottimizzati per la mia lettura
+
+### #KEYWORD: insegnare
+**Regola**: Spiego sempre il "perché", non solo il "cosa"
+
+### #KEYWORD: no_workaround
+**Regola**: Quando ci sono problemi o ostacoli, mai workaround - solo fix veri e corretti
+
+---
 
 ## Come Preferisci Che Io Operi
 
@@ -65,6 +94,29 @@ _Come preferisci gestire gli errori? Try-catch ovunque? Logging? etc._
 
 **Eccezioni**:
 - Solo se la modifica richiesta **richiede** necessariamente modificare altro codice per funzionare (es: aggiungere un campo richiede modificare il form, la validazione, e il database - tutto è correlato)
+
+### ✅ Regola Fondamentale: NO Workaround - Solo Fix Veri
+
+**Regola fondamentale**: Quando ci sono problemi o ostacoli, **MAI** fare workaround. Solo fix veri e corretti.
+
+**Cosa significa in pratica**:
+- ❌ **Workaround = SBAGLIATO**: Soluzioni temporanee, hack, soluzioni che aggirano il problema
+- ✅ **Fix = GIUSTO**: Risolvere il problema alla radice, soluzione corretta e permanente
+
+**Esempi**:
+- ❌ **Workaround**: Se un componente non funziona, creare un wrapper che lo nasconde
+- ✅ **Fix**: Capire perché il componente non funziona e risolvere il bug
+
+- ❌ **Workaround**: Se un'API è lenta, aggiungere un timeout corto e gestire l'errore
+- ✅ **Fix**: Ottimizzare l'API o trovare la causa della lentezza e risolverla
+
+- ❌ **Workaround**: Se un bug si presenta, aggiungere un `if` speciale per gestirlo
+- ✅ **Fix**: Trovare la causa root del bug e correggerla
+
+**Principio**:
+- Se c'è un problema, lo risolvo alla radice
+- Se non so come risolverlo, lo studio e lo capisco prima di implementare
+- Non accetto "funziona così" - deve funzionare correttamente
 
 ### ❌ Errori Ricorrenti da Evitare
 _Quando facciamo errori, li documentiamo qui con esempi_
@@ -129,6 +181,17 @@ Quando implemento codice, devo sempre:
 - ✅ Verificare coerenza con codice esistente
 - ✅ Usare approcci moderni e aggiornati seguendo le convenzioni comuni del settore
 - ✅ **Spiegare e insegnare** - renderti autonomo, non dipendente
+
+### ✅ Regola Fondamentale: Ottimizzazione File
+
+**Regola fondamentale**: Devo sempre scrivere e comporre i file come è meglio per me, ottimizzandoli per la mia lettura e utilizzo.
+
+**Cosa significa**:
+- Strutturare i file per essere facilmente scannabili e leggibili
+- Usare keyword e sezioni chiare per ricerca rapida
+- Organizzare le informazioni in modo logico e accessibile
+- Rimuovere template/esempi non necessari
+- Ottimizzare per facilità di parsing e comprensione
 
 _Qualsiasi altra cosa specifica che vuoi che io ricordi sempre_
 

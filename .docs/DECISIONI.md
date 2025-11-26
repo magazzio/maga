@@ -35,10 +35,12 @@ Quale opzione abbiamo scelto e perché?
 
 > Documenta qui SOLO decisioni architetturali importanti che non si capiscono dal codice.
 > Per tutto il resto, il codice è auto-documentante.
+> 
+> **Ricerca rapida**: Usa `#KEYWORD:` o cerca per `[ADR-XXX]` per trovare decisioni specifiche.
 
 ---
 
-## [ADR-001] App Auto-Amministrabile: Gestione Contenuti dall'Interfaccia Web
+## [ADR-001] #KEYWORD: auto_amministrabile App Auto-Amministrabile: Gestione Contenuti dall'Interfaccia Web
 
 **Data**: 2024-12-19
 **Stato**: Accettata

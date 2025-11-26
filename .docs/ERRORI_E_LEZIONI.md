@@ -2,13 +2,23 @@
 
 > Questo file registra errori importanti, blocchi, e lezioni che abbiamo imparato.
 > Serve a evitare di ripetere gli stessi errori e a ricordare soluzioni che hanno funzionato.
+> 
+> **Formato**: Ogni errore/lezione segue la struttura standard documentata qui sotto.
 
-## Formato
+---
+
+## Errori e Lezioni
+
+> Registra qui gli errori importanti e le lezioni apprese durante lo sviluppo.
+
+---
+
+## 📋 Formato Standard per Errori/Lezioni
 
 Ogni errore/lezione segue questo formato:
 
 ```markdown
-### [Data] Titolo Breve
+### [Data] #KEYWORD: Titolo Breve
 
 **Cosa è successo**: Descrizione del problema/blocco
 **Cosa ho provato**: Tentativi di soluzione
@@ -17,29 +27,12 @@ Ogni errore/lezione segue questo formato:
 **Da fare sempre**: Regola da seguire d'ora in poi
 ```
 
----
-
-## Errori e Lezioni
-
-### Template Esempio (da rimuovere quando iniziamo)
-<!-- 
-### [2024-01-01] Esempio di Errore
-
-**Cosa è successo**: Ho fatto X ma non funzionava
-**Cosa ho provato**: Provato Y e Z
-**Cosa ha funzionato**: Fare W in modo diverso
-**Lezione**: Importante capire A prima di B
-**Da fare sempre**: Prima di X, controllare sempre Y
--->
-
----
-
 ## Pattern di Problemi Ricorrenti
 
-### Se Vedi Questo Pattern → Soluzione
-_Documentiamo qui pattern di errori comuni e le loro soluzioni_
+### #KEYWORD: pattern_ricorrenti
+_Documentiamo qui pattern di errori comuni e le loro soluzioni con keyword per ricerca rapida_
 
-### Checklist Prima di [Azione]
+### #KEYWORD: checklist_azioni
 _Quando scopriamo che prima di fare X dobbiamo sempre controllare Y, Z, W - lo mettiamo qui_
 
 ---
