@@ -32,6 +32,18 @@
 ### #KEYWORD: no_workaround
 **Regola**: Quando ci sono problemi o ostacoli, mai workaround - solo fix veri e corretti
 
+### #KEYWORD: variabili_complete
+**Regola**: Quando discuto, propongo o decido, considero SEMPRE tutte le variabili del progetto
+
+### #KEYWORD: sviluppo_gratuito
+**Regola**: Solo tecnologie, servizi, hosting GRATUITI/open source - zero costi di sviluppo
+
+### #KEYWORD: network_transfer
+**Regola**: Minimizzare sempre il Network Transfer del database - paginazione, cache intelligente, no query ridondanti
+
+### #KEYWORD: semplicita_professionale
+**Regola**: Semplicità e intuitività NON devono limitare professionalità e modernità - design moderno + UX semplice
+
 ---
 
 ## Come Preferisci Che Io Operi
@@ -181,6 +193,132 @@ Quando implemento codice, devo sempre:
 - ✅ Verificare coerenza con codice esistente
 - ✅ Usare approcci moderni e aggiornati seguendo le convenzioni comuni del settore
 - ✅ **Spiegare e insegnare** - renderti autonomo, non dipendente
+
+### ✅ Principio Fondamentale: Semplicità + Professionalità
+
+**Principio**: Semplicità e intuitività NON devono limitare professionalità e modernità visiva.
+
+**Cosa significa**:
+- **Design/Vista**: Moderno, professionale, esteticamente curato, al passo con tendenze 2025
+- **Componenti**: Moderni, professionali, di alta qualità, UI/UX best practices
+- **Usabilità**: Semplice, intuitiva, accessibile, senza complessità inutile
+- **Equilibrio**: Design moderno e professionale che rimane facile da usare
+
+**Esempi**:
+- ❌ **Sbagliato**: Interfaccia "spartana" o poco curata in nome della semplicità
+- ✅ **Giusto**: Interfaccia moderna e professionale (come app enterprise) ma semplice da usare (come app consumer)
+- ❌ **Sbagliato**: Componenti base o poco raffinati
+- ✅ **Giusto**: Componenti moderni e professionali con UX semplice e chiara
+
+**Quando propongo soluzioni UI/UX**:
+- Design moderno e professionale (stile 2025, best practices)
+- Componenti di qualità, ben rifiniti
+- Ma funzionalità semplici e intuitive
+- Non complicare l'uso per rendere "più professionale"
+- Professionalità visiva + semplicità d'uso = obiettivo
+
+### ✅ Regola Fondamentale: Considerazione Completa delle Variabili
+
+**Regola fondamentale**: Quando discuto, propongo soluzioni o prendiamo decisioni, devo **SEMPRE** considerare tutte le variabili del progetto.
+
+**Variabili da Analizzare Sempre**:
+- ✅ **Impatto funzionale** - Come influisce su altre funzionalità esistenti?
+- ✅ **Impatto tecnico** - Implicazioni architetturali, performance, sicurezza?
+- ✅ **Scalabilità** - Funzionerà con crescita utenti/dati?
+- ✅ **Manutenibilità** - Quanto sarà facile mantenere nel tempo?
+- ✅ **Usabilità** - Come impatta l'esperienza utente?
+- ✅ **Compatibilità** - Funziona con dispositivi/ambienti target?
+- ✅ **Costi/Tempi** - Quanto costa in termini di sviluppo/tempo?
+- ✅ **Rischio** - Quali sono i rischi potenziali?
+- ✅ **Dipendenze** - Cosa dipende da questa decisione? Cosa ne dipende?
+- ✅ **Requisiti** - Soddisfa tutti i requisiti del progetto?
+- ✅ **Coerenza** - È coerente con le decisioni già prese?
+- ✅ **Futuro** - Come impatta sviluppi futuri?
+
+**Approccio Metodico**:
+- Prima di proporre: analizzo tutte le variabili sopra
+- Quando discuto: considero implicazioni multiple
+- Quando decidiamo: valuto pro/contro da tutte le angolazioni
+- Documento le variabili considerate nelle decisioni importanti
+
+**Esempio**:
+- ❌ **Sbagliato**: Proporre una soluzione senza considerare scalabilità o manutenibilità
+- ✅ **Giusto**: Analizzare la soluzione considerando tutte le variabili: performance, sicurezza, scalabilità, manutenibilità, usabilità, costi, etc.
+
+### ✅ Regola Fondamentale: Ottimizzazione Network Transfer Database
+
+**Regola fondamentale**: Ogni funzionalità che accede al database deve minimizzare il Network Transfer. La funzionalità richiesta deve sempre essere realizzata, ma le modalità devono impattare nella misura minima possibile sul Network Transfer del database.
+
+**Principi base**:
+- **Nessun workaround sporco** - Solo fix strutturali intelligenti
+- **Minimizzare dati trasferiti** - Query ottimizzate, solo dati necessari
+- **Evitare query ridondanti** - Cache intelligente, no duplicazioni
+- **Evitare polling aggressivo** - Invalidation mirata invece di refetch continui
+
+**Regole tecniche specifiche**:
+
+1. **Paginazione obbligatoria per liste grandi**
+   - Backend: endpoint con `page` e `pageSize`, query SQL con `LIMIT/OFFSET`
+   - Frontend: React Query con chiavi che includono `page/pageSize`
+   - Mai caricare "tutto in una volta" per liste potenzialmente lunghe
+
+2. **React Query configurato correttamente**
+   - `staleTime: 60000` (60s) di default
+   - `refetchOnWindowFocus: false` per liste grandi
+   - `gcTime: 5 * 60 * 1000` (5 minuti)
+   - Mai `staleTime: 0` per liste grandi
+
+3. **Startup data ottimizzati**
+   - Solo dati globali e poco variabili
+   - `staleTime` minimo 2 minuti (120000ms)
+   - Non aggiungere dati specifici di sezione allo startup
+
+4. **Paginazione vs Infinite Scroll**
+   - Preferire sempre `page/pageSize` per gestionale
+   - Evitare `useInfiniteQuery` che accumula in memoria
+   - Se necessario infinite scroll: page size piccola + hard limit
+
+5. **Filtri lato server**
+   - Mai filtrare su client dataset enormi
+   - Filtri come query param al backend
+   - Backend applica filtri e restituisce solo pagina filtrata
+
+6. **Evitare refetch inutili**
+   - Dopo mutation: `invalidateQueries` mirato invece di refetch globale
+   - Pulsante manuale "Aggiorna" per refetch esplicito
+   - No polling se non strettamente necessario
+
+**Checklist per nuove funzionalità**:
+- È una lista potenzialmente lunga? → Paginazione server-side obbligatoria
+- Quanto spesso cambiano i dati? → `staleTime` appropriato
+- Chi deve vedere cambiamenti? → Invalidation mirata o update locale
+- Volume atteso? → Pensare a paginazione/filtri fin dall'inizio
+
+**Cosa NON fare mai**:
+- ❌ `staleTime: 0` su liste grandi
+- ❌ `refetchOnWindowFocus: true` su query pesanti
+- ❌ Query che scaricano tutti i record senza necessità
+- ❌ Polling ogni pochi secondi per dati non critici
+- ❌ Filtrare in memoria dataset enormi già scaricati
+
+### ✅ Regola Fondamentale: Sviluppo Gratuito
+
+**Regola fondamentale**: Lo sviluppo dell'app deve utilizzare SOLO tecnologie, servizi e strumenti gratuiti/open source. Zero costi di sviluppo.
+
+**Cosa significa**:
+- **Stack tecnologico**: Solo tecnologie open source/gratuite
+- **Hosting**: Servizi gratuiti o con tier gratuito generoso
+- **Database**: Solo soluzioni gratuite/open source (es. Neon con tier gratuito)
+- **Servizi esterni**: Solo se gratuiti o con tier gratuito
+- **Strumenti sviluppo**: Solo tool gratuiti/open source
+- **Integrazioni**: Solo se gratuite o low-cost
+
+**Quando propongo soluzioni**:
+- Verifico sempre che siano gratuite
+- Se un servizio è a pagamento, cerco alternative gratuite
+- Priorità a soluzioni open source
+- Considero limiti di servizi gratuiti ma trovo soluzioni creative
+- **Importante**: Con database gratuito (Neon), il Network Transfer è limitato → ottimizzare sempre
 
 ### ✅ Regola Fondamentale: Ottimizzazione File
 

@@ -18,6 +18,9 @@ dist/
 build/
 *.log
 
+# Database migrations (Drizzle)
+**/db/migrations/
+
 # IDE
 .vscode/
 .idea/
