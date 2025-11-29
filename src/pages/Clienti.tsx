@@ -57,8 +57,7 @@ import {
   useUpdateClient,
   useDeleteClient,
 } from '@/hooks/useClients'
-import { Customer, REFERRAL_COLORS, ReferralColor } from '@/db'
-import { Switch } from '@/components/ui/switch'
+import { Customer, REFERRAL_COLORS, ReferralColor, db } from '@/db'
 import { useToast } from '@/hooks/use-toast'
 
 type SortField = 'id' | 'name' | null
@@ -284,6 +283,22 @@ export default function Clienti() {
     localStorage.setItem('clienti-page-size', pageSize.toString())
   }, [pageSize])
 
+  // Reset form quando il dialog si chiude
+  useEffect(() => {
+    if (!isDialogOpen) {
+      setEditingClient(null)
+      setFormErrors({})
+      setFormData({
+        name: '',
+        contact_info: '',
+        notes: '',
+        is_referral: false,
+        referral_color: undefined,
+        referred_by: undefined,
+      })
+    }
+  }, [isDialogOpen])
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -419,7 +434,7 @@ export default function Clienti() {
         name: client.name || '',
         contact_info: client.contact_info || '',
         notes: client.notes || '',
-        is_referral: client.is_referral || false,
+        is_referral: client.is_referral || false, // Mantieni lo status esistente
         referral_color: client.referral_color,
         referred_by: client.referred_by,
       })
@@ -445,6 +460,9 @@ export default function Clienti() {
       name: '',
       contact_info: '',
       notes: '',
+      is_referral: false,
+      referral_color: undefined,
+      referred_by: undefined,
     })
   }
 
@@ -855,61 +873,15 @@ export default function Clienti() {
                     aria-label="Note cliente"
                   />
                 </div>
-                <div className="flex items-center justify-between p-4 border rounded-lg">
-                  <div className="space-y-0.5">
-                    <Label htmlFor="is_referral">È Referral</Label>
-                    <p className="text-xs text-muted-foreground">
-                      Se attivo, questo cliente può referenziare altri clienti
-                    </p>
-                  </div>
-                  <Switch
-                    id="is_referral"
-                    checked={formData.is_referral || false}
-                    onCheckedChange={(checked) => {
-                      setFormData({
-                        ...formData,
-                        is_referral: checked,
-                        referral_color: checked ? (formData.referral_color || 'cyan') : undefined,
-                        referred_by: checked ? undefined : formData.referred_by, // Se diventa referral, non può essere referenziato
-                      })
-                    }}
-                    aria-label="Cliente è referral"
-                  />
-                </div>
-                {formData.is_referral && (
-                  <div className="grid gap-2">
-                    <Label htmlFor="referral_color">Colore Referral</Label>
-                    <div className="flex gap-2 flex-wrap">
-                      {(Object.keys(REFERRAL_COLORS) as ReferralColor[]).map((color) => {
-                        const colorInfo = REFERRAL_COLORS[color]
-                        return (
-                          <button
-                            key={color}
-                            type="button"
-                            onClick={() => setFormData({ ...formData, referral_color: color })}
-                            className={`inline-flex items-center rounded-full px-3 py-1.5 text-sm font-medium transition-all ${
-                              formData.referral_color === color
-                                ? `${colorInfo.bg} ${colorInfo.text} ring-2 ring-offset-2 ring-foreground`
-                                : `${colorInfo.bg} ${colorInfo.text} opacity-50 hover:opacity-75`
-                            }`}
-                            aria-label={`Seleziona colore ${colorInfo.label}`}
-                          >
-                            {colorInfo.label}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )}
-                {!formData.is_referral && availableReferrals.length > 0 && (
+                {availableReferrals.length > 0 && (
                   <div className="grid gap-2">
                     <Label htmlFor="referred_by">Referenziato da</Label>
                     <Select
-                      value={formData.referred_by?.toString() || ''}
+                      value={formData.referred_by?.toString() || 'none'}
                       onValueChange={(value) =>
                         setFormData({
                           ...formData,
-                          referred_by: value ? parseInt(value) : undefined,
+                          referred_by: value && value !== 'none' ? parseInt(value) : undefined,
                         })
                       }
                     >
@@ -917,7 +889,7 @@ export default function Clienti() {
                         <SelectValue placeholder="Nessun referral" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">Nessun referral</SelectItem>
+                        <SelectItem value="none">Nessun referral</SelectItem>
                         {availableReferrals.map((referral) => {
                           const colorInfo = referral.referral_color
                             ? REFERRAL_COLORS[referral.referral_color]
