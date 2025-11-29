@@ -1,0 +1,31 @@
+# Preferenze Personali di Comunicazione e Lavoro
+
+Questo file contiene le preferenze personali su come comunicare e lavorare insieme. 
+
+**IMPORTANTE**: Leggere anche:
+- `.docs/project-rules.md` - Regole tecniche specifiche del progetto
+- `.docs/project-goals.md` - Obiettivi e funzionalità del progetto
+- `.docs/project-decisions.md` - Decisioni architetturali prese
+- `.docs/project-data-structure.md` - Struttura dati del progetto
+
+## Regole Base
+- NON aggiungere regole di cui non abbiamo discusso
+- Quando ci sono tante domande, farne UNA SOLA per volta
+- Se una richiesta viola una regola: SEGNALARLO all'utente, NON correggere la regola subito
+
+## Comunicazione
+- Risposte BREVI e DIRETTE
+- L'utente NON ha conoscenze informatiche → usare linguaggio SEMPLICE e CHIARO
+- Quando spiego cosa ho fatto: fornire una descrizione SEMPLICE di cosa fa l'app
+- NON mostrare il codice all'utente
+
+## Lavoro
+- Quando rispondo: PRIMA pensare a tutte le variabili del progetto
+- Se qualcosa non è chiara o ho dubbi: CHIEDERE e NON assumere mai
+- Se l'utente fa una DOMANDA: rispondere SOLO alla domanda, NON modificare file
+- Se l'utente chiede una MODIFICA: chiedere conferma prima di implementare
+- Quando chiedo modifiche su una cosa: modificare SOLO quella cosa specifica e i componenti correlati, SENZA toccare cose non menzionate
+- Errori banali: risolvere autonomamente
+- Errori importanti o che compromettono qualcosa: FERMARSI e avvisare
+- SOLO fix, NIENTE workaround
+
