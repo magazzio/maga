@@ -1,199 +1,111 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { db, Entity } from '@/db'
-import { logger } from '@/lib/logger'
+import { toast } from '@/hooks/use-toast'
 
-const ENTITIES_QUERY_KEY = ['entities']
+// Query keys
+const ENTITIES_KEY = ['entities'] as const
 
+// GET - Lista entità
 export function useEntities() {
   return useQuery({
-    queryKey: ENTITIES_QUERY_KEY,
+    queryKey: ENTITIES_KEY,
     queryFn: async () => {
-      try {
-        return await db.entities.toArray()
-      } catch (error) {
-        logger.error('Error loading entities', error as Error)
-        throw error
-      }
+      return await db.entities.toArray()
     },
+    staleTime: 5 * 60 * 1000, // 5 minuti - dati cambiano raramente
   })
 }
 
+// GET - Singola entità
 export function useEntity(id: number) {
   return useQuery({
-    queryKey: [...ENTITIES_QUERY_KEY, id],
+    queryKey: [...ENTITIES_KEY, id],
     queryFn: async () => {
-      try {
-        return await db.entities.get(id)
-      } catch (error) {
-        logger.error('Error fetching entity', error as Error, { entityId: id })
-        throw error
+      const entity = await db.entities.get(id)
+      if (!entity) {
+        throw new Error('Entità non trovata')
       }
+      return entity
     },
     enabled: !!id,
   })
 }
 
+// CREATE - Crea entità
 export function useCreateEntity() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async (entity: Omit<Entity, 'id'>) => {
-      try {
-        // Crea l'entità
-        const entityId = await db.entities.add(entity)
-        
-        // Crea automaticamente magazzino e portafoglio associati
-        const warehouseName = `Magazzino ${entity.name}`
-        const portfolioName = `Portafoglio ${entity.name}`
-        
-        await db.warehouses.add({
-          name: warehouseName,
-          description: `Magazzino principale di ${entity.name}`,
-          entity_id: entityId as number,
-        })
-        
-        await db.portfolios.add({
-          name: portfolioName,
-          description: `Cassa per i movimenti di ${entity.name}`,
-          entity_id: entityId as number,
-        })
-        
-        logger.info('Entity created with warehouse and portfolio', { entityId, entityName: entity.name })
-        
-        return entityId
-      } catch (error) {
-        logger.error('Error creating entity', error as Error, { entityName: entity.name })
-        throw error
-      }
+    mutationFn: async (data: Omit<Entity, 'id'>) => {
+      const id = await db.entities.add(data as Entity)
+      return { ...data, id } as Entity
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ENTITIES_QUERY_KEY })
-      queryClient.invalidateQueries({ queryKey: ['warehouses'] })
-      queryClient.invalidateQueries({ queryKey: ['portfolios'] })
+      queryClient.invalidateQueries({ queryKey: ENTITIES_KEY })
+      toast({
+        title: 'Entità creata',
+        description: 'L\'entità è stata creata con successo.',
+      })
     },
-    onError: (error) => {
-      logger.error('Failed to create entity', error as Error)
+    onError: (error: Error) => {
+      toast({
+        title: 'Errore',
+        description: error.message || 'Impossibile creare l\'entità.',
+        variant: 'destructive',
+      })
     },
   })
 }
 
+// UPDATE - Modifica entità
 export function useUpdateEntity() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async (entity: Entity) => {
-      try {
-        if (!entity.id) {
-          logger.error('Attempted to update entity without ID', new Error('Entity ID is required'), { entity })
-          throw new Error('Entity ID is required for update')
-        }
-        
-        // Aggiorna l'entità
-        await db.entities.update(entity.id, entity)
-        
-        // Aggiorna anche i nomi di magazzino e portafoglio associati
-        const warehouses = await db.warehouses.where('entity_id').equals(entity.id).toArray()
-        const portfolios = await db.portfolios.where('entity_id').equals(entity.id).toArray()
-        
-        for (const warehouse of warehouses) {
-          if (warehouse.id) {
-            await db.warehouses.update(warehouse.id, {
-              name: `Magazzino ${entity.name}`,
-              description: `Magazzino principale di ${entity.name}`,
-            })
-          }
-        }
-        
-        for (const portfolio of portfolios) {
-          if (portfolio.id) {
-            await db.portfolios.update(portfolio.id, {
-              name: `Portafoglio ${entity.name}`,
-              description: `Cassa per i movimenti di ${entity.name}`,
-            })
-          }
-        }
-        
-        return entity.id
-      } catch (error) {
-        logger.error('Error updating entity', error as Error, { entityId: entity.id, entityName: entity.name })
-        throw error
-      }
+    mutationFn: async ({ id, ...data }: Entity) => {
+      if (!id) throw new Error('ID entità mancante')
+      await db.entities.update(id, data)
+      return { id, ...data } as Entity
     },
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ENTITIES_QUERY_KEY })
-      queryClient.invalidateQueries({ queryKey: ['warehouses'] })
-      queryClient.invalidateQueries({ queryKey: ['portfolios'] })
-      if (variables.id) {
-        queryClient.invalidateQueries({ queryKey: [...ENTITIES_QUERY_KEY, variables.id] })
-      }
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ENTITIES_KEY })
+      queryClient.invalidateQueries({ queryKey: [...ENTITIES_KEY, data.id] })
+      toast({
+        title: 'Entità aggiornata',
+        description: 'L\'entità è stata aggiornata con successo.',
+      })
     },
-    onError: (error) => {
-      logger.error('Failed to update entity', error as Error)
+    onError: (error: Error) => {
+      toast({
+        title: 'Errore',
+        description: error.message || 'Impossibile aggiornare l\'entità.',
+        variant: 'destructive',
+      })
     },
   })
 }
 
+// DELETE - Elimina entità
 export function useDeleteEntity() {
   const queryClient = useQueryClient()
 
   return useMutation({
     mutationFn: async (id: number) => {
-      try {
-        // Verifica se l'entità è usata in transazioni (tramite magazzini/portafogli)
-        const warehouses = await db.warehouses.where('entity_id').equals(id).toArray()
-        const portfolios = await db.portfolios.where('entity_id').equals(id).toArray()
-        
-        const warehouseIds = warehouses.map(w => w.id).filter((id): id is number => id !== undefined)
-        const portfolioIds = portfolios.map(p => p.id).filter((id): id is number => id !== undefined)
-        
-        // Controlla transazioni che usano questi magazzini
-        let transactionsCount = 0
-        for (const warehouseId of warehouseIds) {
-          const fromCount = await db.transactions.where('from_warehouse_id').equals(warehouseId).count()
-          const toCount = await db.transactions.where('to_warehouse_id').equals(warehouseId).count()
-          transactionsCount += fromCount + toCount
-        }
-        
-        // Controlla transazioni che usano questi portafogli
-        for (const portfolioId of portfolioIds) {
-          const fromCount = await db.transactions.where('from_portfolio_id').equals(portfolioId).count()
-          const toCount = await db.transactions.where('to_portfolio_id').equals(portfolioId).count()
-          transactionsCount += fromCount + toCount
-        }
-        
-        // Permetti eliminazione solo se non ci sono transazioni
-        // I magazzini e portafogli associati verranno eliminati automaticamente
-        if (transactionsCount > 0) {
-          throw new Error(
-            `Impossibile eliminare: questa entità è utilizzata in ${transactionsCount} movimento${transactionsCount !== 1 ? 'i' : ''}. ` +
-            'Elimina prima i movimenti correlati.'
-          )
-        }
-        
-        // Elimina magazzini e portafogli associati
-        for (const warehouseId of warehouseIds) {
-          await db.warehouses.delete(warehouseId)
-        }
-        for (const portfolioId of portfolioIds) {
-          await db.portfolios.delete(portfolioId)
-        }
-        
-        // Elimina l'entità
-        await db.entities.delete(id)
-        
-        logger.info('Entity deleted with associated warehouse and portfolio', { entityId: id })
-      } catch (error) {
-        logger.error('Error deleting entity', error as Error, { entityId: id })
-        throw error
-      }
+      await db.entities.delete(id)
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ENTITIES_QUERY_KEY })
-      queryClient.invalidateQueries({ queryKey: ['warehouses'] })
-      queryClient.invalidateQueries({ queryKey: ['portfolios'] })
+      queryClient.invalidateQueries({ queryKey: ENTITIES_KEY })
+      toast({
+        title: 'Entità eliminata',
+        description: 'L\'entità è stata eliminata con successo.',
+      })
     },
-    onError: (error) => {
-      logger.error('Failed to delete entity', error as Error)
+    onError: (error: Error) => {
+      toast({
+        title: 'Errore',
+        description: error.message || 'Impossibile eliminare l\'entità.',
+        variant: 'destructive',
+      })
     },
   })
 }

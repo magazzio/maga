@@ -45,6 +45,7 @@ Documentazione tecnica del progetto in `.docs/`:
 - `project-goals.md` - Obiettivi e funzionalità
 - `project-decisions.md` - Decisioni architetturali
 - `project-data-structure.md` - Struttura dati
+- `project-review.md` - Problemi attuali, best practice e pattern qualità
 - `errors-and-lessons.md` - Errori e lezioni apprese
 
 ## Note

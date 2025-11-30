@@ -1,9 +1,13 @@
-import { useState, useMemo } from 'react'
-import { Plus, Pencil, Trash2, Search, Package, AlertCircle, CheckCircle2, X } from 'lucide-react'
+import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   Table,
   TableBody,
@@ -12,1024 +16,1186 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select-product-type'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
-import { Switch } from '@/components/ui/switch'
-import { Badge } from '@/components/ui/badge'
-import {
-  useTransactions,
-  useCreateTransaction,
-  useUpdateTransaction,
-  useDeleteTransaction,
-} from '@/hooks/useTransactions'
-import { useTransactionTypes } from '@/hooks/useTransactionTypes'
-import { useActiveProducts } from '@/hooks/useProducts'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select-product-type'
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
+import { Plus, Pencil, Trash2, Calendar, Package, Warehouse, Wallet, ArrowRight, ArrowDown, ArrowUp, Info, ChevronLeft, ChevronRight } from 'lucide-react'
+import { useTransactions, useCreateTransaction, useUpdateTransaction, useDeleteTransaction } from '@/hooks/useTransactions'
+import { useTransactionTypes, useTransactionType } from '@/hooks/useTransactionTypes'
 import { useWarehouses } from '@/hooks/useWarehouses'
 import { usePortfolios } from '@/hooks/usePortfolios'
-import { useEntities } from '@/hooks/useEntities'
+import { useProducts } from '@/hooks/useProducts'
 import { Transaction } from '@/db'
-import { useToast } from '@/hooks/use-toast'
-import { logger } from '@/lib/logger'
+import { format } from 'date-fns'
 
 export default function Movimenti() {
-  const [page, setPage] = useState(1)
-  const pageSize = 20
-  const [searchTerm, setSearchTerm] = useState('')
-  const [filterTypeId, setFilterTypeId] = useState<number | 'all'>('all')
-  const [filterProductId, setFilterProductId] = useState<string | 'all'>('all')
-  const [filterEntityId, setFilterEntityId] = useState<number | 'all'>('all')
-  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null)
-  const [confirmDeleteDialog, setConfirmDeleteDialog] = useState<{ open: boolean; transactionId: number | null }>({ open: false, transactionId: null })
-
-  const { data: transactionsData, isLoading } = useTransactions(page, pageSize)
+  const { data: transactions, isLoading } = useTransactions()
   const { data: transactionTypes } = useTransactionTypes()
-  const { data: products } = useActiveProducts()
   const { data: warehouses } = useWarehouses()
   const { data: portfolios } = usePortfolios()
-  const { data: entities } = useEntities()
-
+  const { data: products } = useProducts()
   const createMutation = useCreateTransaction()
   const updateMutation = useUpdateTransaction()
   const deleteMutation = useDeleteTransaction()
-  const { toast } = useToast()
 
-  // Form data per nuovo/modifica movimento
-  const [formData, setFormData] = useState<Omit<Transaction, 'id'>>({
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null)
+  const [deleteId, setDeleteId] = useState<number | null>(null)
+  const [selectedTypeId, setSelectedTypeId] = useState<number | null>(null)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize] = useState(20)
+  const [formData, setFormData] = useState<Partial<Transaction>>({
     type_id: 0,
     date: new Date(),
     product_id: undefined,
     quantity: undefined,
+    product_state: undefined,
     from_warehouse_id: undefined,
     to_warehouse_id: undefined,
     from_portfolio_id: undefined,
     to_portfolio_id: undefined,
     amount: undefined,
-    payment_method: 'cash',
+    payment_method: undefined,
     is_debt: false,
     debt_status: undefined,
     notes: undefined,
   })
-  const [formErrors, setFormErrors] = useState<Record<string, string>>({})
 
-  // Tipo movimento selezionato nel form
-  const selectedTransactionType = transactionTypes?.find(t => t.id === formData.type_id)
+  // Carica tipo movimento selezionato per applicare suggerimenti
+  const { data: selectedTransactionType } = useTransactionType(selectedTypeId || 0)
 
-  // Crea mappe per lookup veloce
-  const warehouseMap = useMemo(() => {
-    if (!warehouses) return new Map()
-    return new Map(warehouses.map(w => [w.id, w]))
-  }, [warehouses])
+  // Applica suggerimenti quando cambia il tipo movimento
+  useEffect(() => {
+    if (selectedTransactionType && !editingTransaction) {
+      const newFormData: Partial<Transaction> = {
+        ...formData,
+        type_id: selectedTransactionType.id!,
+      }
 
-  const portfolioMap = useMemo(() => {
-    if (!portfolios) return new Map()
-    return new Map(portfolios.map(p => [p.id, p]))
-  }, [portfolios])
+      // Applica suggerimenti magazzino
+      if (selectedTransactionType.affects_warehouse) {
+        if (selectedTransactionType.warehouse_direction === 'transfer') {
+          newFormData.from_warehouse_id = selectedTransactionType.suggested_from_warehouse_id
+          newFormData.to_warehouse_id = selectedTransactionType.suggested_to_warehouse_id
+        } else if (selectedTransactionType.warehouse_direction === 'in') {
+          newFormData.to_warehouse_id = selectedTransactionType.suggested_to_warehouse_id
+          newFormData.from_warehouse_id = undefined
+        } else if (selectedTransactionType.warehouse_direction === 'out') {
+          newFormData.from_warehouse_id = selectedTransactionType.suggested_from_warehouse_id
+          newFormData.to_warehouse_id = undefined
+        }
+      }
 
-  // Filtra movimenti
-  const filteredTransactions = useMemo(() => {
-    if (!transactionsData?.transactions) return []
-    
-    let filtered = transactionsData.transactions
+      // Applica suggerimenti portafoglio
+      if (selectedTransactionType.affects_portfolio) {
+        if (selectedTransactionType.portfolio_direction === 'transfer') {
+          newFormData.from_portfolio_id = selectedTransactionType.suggested_from_portfolio_id
+          newFormData.to_portfolio_id = selectedTransactionType.suggested_to_portfolio_id
+        } else if (selectedTransactionType.portfolio_direction === 'in') {
+          newFormData.to_portfolio_id = selectedTransactionType.suggested_to_portfolio_id
+          newFormData.from_portfolio_id = undefined
+        } else if (selectedTransactionType.portfolio_direction === 'out') {
+          newFormData.from_portfolio_id = selectedTransactionType.suggested_from_portfolio_id
+          newFormData.to_portfolio_id = undefined
+        }
+      }
 
-    // Filtro tipo movimento
-    if (filterTypeId !== 'all') {
-      filtered = filtered.filter(t => t.type_id === filterTypeId)
+      // Applica trasformazione di stato se configurata
+      if (selectedTransactionType.transforms_state) {
+        // Lo stato finale viene salvato nel movimento
+        newFormData.product_state = selectedTransactionType.to_state
+      }
+
+      setFormData(newFormData)
     }
+  }, [selectedTransactionType, editingTransaction])
 
-    // Filtro prodotto
-    if (filterProductId !== 'all') {
-      filtered = filtered.filter(t => t.product_id === filterProductId)
-    }
-
-    // Filtro entità (tramite magazzini/portafogli)
-    if (filterEntityId !== 'all') {
-      filtered = filtered.filter(t => {
-        const fromWarehouse = t.from_warehouse_id ? warehouseMap.get(t.from_warehouse_id) : null
-        const toWarehouse = t.to_warehouse_id ? warehouseMap.get(t.to_warehouse_id) : null
-        const fromPortfolio = t.from_portfolio_id ? portfolioMap.get(t.from_portfolio_id) : null
-        const toPortfolio = t.to_portfolio_id ? portfolioMap.get(t.to_portfolio_id) : null
-        
-        return (
-          (fromWarehouse?.entity_id === filterEntityId) ||
-          (toWarehouse?.entity_id === filterEntityId) ||
-          (fromPortfolio?.entity_id === filterEntityId) ||
-          (toPortfolio?.entity_id === filterEntityId)
-        )
+  const handleOpenDialog = (transaction?: Transaction) => {
+    if (transaction) {
+      setEditingTransaction(transaction)
+      setSelectedTypeId(transaction.type_id)
+      setFormData({
+        ...transaction,
+        date: transaction.date instanceof Date ? transaction.date : new Date(transaction.date),
+      })
+    } else {
+      setEditingTransaction(null)
+      setSelectedTypeId(null)
+      setFormData({
+        type_id: 0,
+        date: new Date(),
+        product_id: undefined,
+        quantity: undefined,
+        product_state: undefined,
+        from_warehouse_id: undefined,
+        to_warehouse_id: undefined,
+        from_portfolio_id: undefined,
+        to_portfolio_id: undefined,
+        amount: undefined,
+        payment_method: undefined,
+        is_debt: false,
+        debt_status: undefined,
+        notes: undefined,
       })
     }
-
-    // Filtro ricerca
-    if (searchTerm.trim()) {
-      const search = searchTerm.toLowerCase()
-      filtered = filtered.filter(t => {
-        const typeName = transactionTypes?.find(tt => tt.id === t.type_id)?.name || ''
-        const productName = products?.find(p => p.id === t.product_id)?.strain || ''
-        const notes = t.notes || ''
-        
-        return (
-          typeName.toLowerCase().includes(search) ||
-          productName.toLowerCase().includes(search) ||
-          notes.toLowerCase().includes(search)
-        )
-      })
-    }
-
-    return filtered
-  }, [transactionsData, filterTypeId, filterProductId, filterEntityId, searchTerm, transactionTypes, products, warehouseMap, portfolioMap])
-
-  // Debiti pendenti
-  const pendingDebts = useMemo(() => {
-    return filteredTransactions.filter(t => t.is_debt && t.debt_status === 'pending')
-  }, [filteredTransactions])
-
-  // Tipi movimento più comuni (per Quick Actions)
-  const commonTransactionTypes = useMemo(() => {
-    if (!transactionTypes) return []
-    // Prendi i primi 4 tipi movimento (o tutti se meno di 4)
-    return transactionTypes.slice(0, 4)
-  }, [transactionTypes])
-
-  const handleQuickAction = (typeId: number) => {
-    const type = transactionTypes?.find(t => t.id === typeId)
-    if (!type) return
-
-    // Precompila form con tipo movimento
-    setFormData({
-      type_id: typeId,
-      date: new Date(),
-      product_id: undefined,
-      quantity: undefined,
-      from_warehouse_id: undefined,
-      to_warehouse_id: undefined,
-      from_portfolio_id: undefined,
-      to_portfolio_id: undefined,
-      amount: undefined,
-      payment_method: type.payment_type === 'instant' ? 'cash' : 'debito',
-      is_debt: type.payment_type === 'monthly',
-      debt_status: type.payment_type === 'monthly' ? 'pending' : undefined,
-      notes: undefined,
-    })
-    setEditingTransaction(null)
-    setFormErrors({})
+    setDialogOpen(true)
   }
 
-  const handleEdit = (transaction: Transaction) => {
-    setEditingTransaction(transaction)
-    setFormData({
-      type_id: transaction.type_id,
-      date: transaction.date instanceof Date ? transaction.date : new Date(transaction.date),
-      product_id: transaction.product_id,
-      quantity: transaction.quantity,
-      from_warehouse_id: transaction.from_warehouse_id,
-      to_warehouse_id: transaction.to_warehouse_id,
-      from_portfolio_id: transaction.from_portfolio_id,
-      to_portfolio_id: transaction.to_portfolio_id,
-      amount: transaction.amount,
-      payment_method: transaction.payment_method || 'cash',
-      is_debt: transaction.is_debt || false,
-      debt_status: transaction.debt_status,
-      debt_paid_date: transaction.debt_paid_date,
-      notes: transaction.notes,
-    })
-    setFormErrors({})
-  }
-
-  const handleResetForm = () => {
+  const handleCloseDialog = () => {
+    setDialogOpen(false)
     setEditingTransaction(null)
+    setSelectedTypeId(null)
+    setErrors({})
     setFormData({
       type_id: 0,
       date: new Date(),
       product_id: undefined,
       quantity: undefined,
+      product_state: undefined,
       from_warehouse_id: undefined,
       to_warehouse_id: undefined,
       from_portfolio_id: undefined,
       to_portfolio_id: undefined,
       amount: undefined,
-      payment_method: 'cash',
+      payment_method: undefined,
       is_debt: false,
       debt_status: undefined,
       notes: undefined,
     })
-    setFormErrors({})
   }
 
-  const validateForm = () => {
-    const errors: Record<string, string> = {}
+  const [errors, setErrors] = useState<Record<string, string>>({})
 
-    if (!formData.type_id || formData.type_id === 0) {
-      errors.type_id = 'Seleziona un tipo movimento'
+  const validateForm = (): boolean => {
+    const newErrors: Record<string, string> = {}
+
+    if (!formData.type_id) {
+      newErrors.type_id = 'Seleziona un tipo movimento'
     }
-
-    if (selectedTransactionType?.affects_warehouse) {
-      if (!formData.from_warehouse_id && !formData.to_warehouse_id) {
-        errors.warehouse = 'Seleziona almeno un magazzino (origine o destinazione)'
+    if (!formData.date) {
+      newErrors.date = 'Seleziona una data'
+    }
+    if (selectedType?.requires_product) {
+      if (!formData.product_id) {
+        newErrors.product_id = 'Seleziona una strain'
+      }
+      if (!formData.quantity || formData.quantity <= 0) {
+        newErrors.quantity = 'Inserisci una quantità valida'
       }
     }
-
-    if (selectedTransactionType?.affects_portfolio) {
-      if (!formData.from_portfolio_id && !formData.to_portfolio_id) {
-        errors.portfolio = 'Seleziona almeno un portafoglio (origine o destinazione)'
+    if (selectedType?.affects_warehouse) {
+      if (selectedType.warehouse_direction === 'transfer') {
+        if (!formData.from_warehouse_id) {
+          newErrors.from_warehouse_id = 'Seleziona magazzino origine'
+        }
+        if (!formData.to_warehouse_id) {
+          newErrors.to_warehouse_id = 'Seleziona magazzino destinazione'
+        }
+      } else if (selectedType.warehouse_direction === 'in' && !formData.to_warehouse_id) {
+        newErrors.to_warehouse_id = 'Seleziona magazzino destinazione'
+      } else if (selectedType.warehouse_direction === 'out' && !formData.from_warehouse_id) {
+        newErrors.from_warehouse_id = 'Seleziona magazzino origine'
       }
+    }
+    if (selectedType?.affects_portfolio) {
       if (!formData.amount || formData.amount <= 0) {
-        errors.amount = 'L\'importo è obbligatorio e deve essere maggiore di zero'
+        newErrors.amount = 'Inserisci un importo valido'
+      }
+      if (selectedType.portfolio_direction === 'transfer') {
+        if (!formData.from_portfolio_id) {
+          newErrors.from_portfolio_id = 'Seleziona portafoglio origine'
+        }
+        if (!formData.to_portfolio_id) {
+          newErrors.to_portfolio_id = 'Seleziona portafoglio destinazione'
+        }
+      } else if (selectedType.portfolio_direction === 'in' && !formData.to_portfolio_id) {
+        newErrors.to_portfolio_id = 'Seleziona portafoglio destinazione'
+      } else if (selectedType.portfolio_direction === 'out' && !formData.from_portfolio_id) {
+        newErrors.from_portfolio_id = 'Seleziona portafoglio origine'
       }
     }
 
-    if (formData.is_debt && !formData.debt_status) {
-      errors.debt_status = 'Seleziona lo stato del debito'
-    }
-
-    setFormErrors(errors)
-    return Object.keys(errors).length === 0
+    setErrors(newErrors)
+    return Object.keys(newErrors).length === 0
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    
     if (!validateForm()) {
-      toast({
-        title: 'Errore di validazione',
-        description: 'Controlla i campi evidenziati',
-        variant: 'destructive',
-      })
       return
     }
-    
-    try {
-      if (editingTransaction?.id) {
-        await updateMutation.mutateAsync({
-          ...editingTransaction,
-          ...formData,
-        })
-        toast({
-          title: 'Movimento aggiornato',
-          description: 'Le modifiche sono state salvate con successo',
-          variant: 'success',
-        })
-      } else {
-        await createMutation.mutateAsync(formData)
-        toast({
-          title: 'Movimento creato',
-          description: 'Il nuovo movimento è stato registrato con successo',
-          variant: 'success',
-        })
-      }
-      handleResetForm()
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Errore sconosciuto'
-      logger.error('Error saving transaction', error as Error)
-      toast({
-        title: 'Errore',
-        description: `Errore nel salvataggio del movimento: ${errorMessage}`,
-        variant: 'destructive',
-      })
+    if (editingTransaction?.id) {
+      updateMutation.mutate({ ...editingTransaction, ...formData } as Transaction)
+    } else {
+      createMutation.mutate(formData as Omit<Transaction, 'id'>)
     }
+    setErrors({})
+    handleCloseDialog()
   }
 
   const handleDelete = (id: number) => {
-    setConfirmDeleteDialog({ open: true, transactionId: id })
+    deleteMutation.mutate(id)
+    setDeleteId(null)
   }
 
-  const performDelete = async () => {
-    if (!confirmDeleteDialog.transactionId) return
-    
-    try {
-      await deleteMutation.mutateAsync(confirmDeleteDialog.transactionId)
-      toast({
-        title: 'Movimento eliminato',
-        description: 'Il movimento è stato eliminato con successo',
-        variant: 'success',
-      })
-      setConfirmDeleteDialog({ open: false, transactionId: null })
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Errore nell\'eliminazione del movimento'
-      logger.error('Error deleting transaction', error as Error, { transactionId: confirmDeleteDialog.transactionId })
-      toast({
-        title: 'Errore',
-        description: errorMessage,
-        variant: 'destructive',
-      })
+  const selectedType = transactionTypes?.find(t => t.id === selectedTypeId)
+
+  // Paginazione
+  const totalPages = transactions ? Math.ceil(transactions.length / pageSize) : 0
+  const startIndex = (currentPage - 1) * pageSize
+  const endIndex = startIndex + pageSize
+  const paginatedTransactions = transactions?.slice(startIndex, endIndex) || []
+
+  // Reset pagina quando cambiano i dati
+  useEffect(() => {
+    if (transactions && currentPage > totalPages && totalPages > 0) {
+      setCurrentPage(totalPages)
     }
-  }
-
-  const handleSettleDebt = async (transaction: Transaction) => {
-    if (!transaction.id) return
-    
-    try {
-      await updateMutation.mutateAsync({
-        ...transaction,
-        debt_status: 'paid',
-        debt_paid_date: new Date(),
-      })
-      toast({
-        title: 'Debito saldato',
-        description: 'Il debito è stato segnato come saldato',
-        variant: 'success',
-      })
-    } catch (error) {
-      logger.error('Error settling debt', error as Error)
-      toast({
-        title: 'Errore',
-        description: 'Errore nel saldare il debito',
-        variant: 'destructive',
-      })
-    }
-  }
-
-  // Filtra magazzini per entità selezionata
-  const availableWarehouses = useMemo(() => {
-    if (!warehouses) return []
-    if (filterEntityId === 'all') return warehouses
-    return warehouses.filter(w => w.entity_id === filterEntityId)
-  }, [warehouses, filterEntityId])
-
-  // Filtra portafogli per entità selezionata
-  const availablePortfolios = useMemo(() => {
-    if (!portfolios) return []
-    if (filterEntityId === 'all') return portfolios
-    return portfolios.filter(p => p.entity_id === filterEntityId)
-  }, [portfolios, filterEntityId])
-
-  // Formatta data per input
-  const formatDateForInput = (date: Date) => {
-    return date.toISOString().split('T')[0]
-  }
-
-  if (isLoading) {
-    return (
-      <div className="space-y-6">
-        <Card>
-          <CardContent className="py-8">
-            <div className="text-center text-muted-foreground">Caricamento...</div>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
+  }, [transactions, currentPage, totalPages])
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h2 className="text-3xl font-bold tracking-tight">Movimenti</h2>
-        <p className="text-muted-foreground mt-2">
-          Registra e gestisci i movimenti di magazzino e portafogli
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-3xl font-bold tracking-tight">Movimenti</h2>
+          <p className="text-muted-foreground">Gestisci i movimenti di magazzino e portafogli</p>
+        </div>
+        <Button onClick={() => handleOpenDialog()} aria-label="Crea nuovo movimento">
+          <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
+          Nuovo Movimento
+        </Button>
       </div>
 
-      {/* Quick Actions Bar */}
-      {commonTransactionTypes.length > 0 && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Azioni Rapide</CardTitle>
-            <CardDescription className="text-sm">
-              Crea rapidamente i movimenti più comuni
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-wrap gap-2">
-              {commonTransactionTypes.map((type) => (
-                <Button
-                  key={type.id}
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleQuickAction(type.id!)}
-                  className="flex items-center gap-2"
-                >
-                  <Plus className="h-4 w-4" />
-                  {type.name}
-                </Button>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      {isLoading ? (
+        <div className="flex items-center justify-center py-12">
+          <div className="text-muted-foreground">Caricamento...</div>
+        </div>
+      ) : (
+        <>
+          {/* Tabella Desktop */}
+          <div className="hidden md:block rounded-md border overflow-x-auto">
+            <Table className="w-full">
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="align-middle w-[11%]">Data</TableHead>
+                  <TableHead className="align-middle w-[14%]">Tipo</TableHead>
+                  <TableHead className="align-middle w-[14%]">Prodotto</TableHead>
+                  <TableHead className="text-center align-middle w-[9%]">Quantità</TableHead>
+                  <TableHead className="text-center align-middle w-[9%]">Stato</TableHead>
+                  <TableHead className="align-middle w-[17%]">Magazzino</TableHead>
+                  <TableHead className="align-middle w-[17%]">Portafoglio</TableHead>
+                  <TableHead className="text-center align-middle w-[11%]">Importo</TableHead>
+                  <TableHead className="text-center w-[120px] align-middle">Azioni</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {paginatedTransactions.length > 0 ? (
+                  paginatedTransactions.map((transaction) => {
+                  const type = transactionTypes?.find(t => t.id === transaction.type_id)
+                  return (
+                    <TableRow key={transaction.id}>
+                      <TableCell className="align-middle w-[11%]">
+                        {format(new Date(transaction.date), 'dd/MM/yyyy')}
+                      </TableCell>
+                      <TableCell className="align-middle w-[14%]">{type?.name || 'N/A'}</TableCell>
+                      <TableCell className="align-middle w-[14%]">
+                        {transaction.product_id 
+                          ? (products?.find(p => p.id === transaction.product_id)?.strain || transaction.product_id)
+                          : '-'
+                        }
+                      </TableCell>
+                      <TableCell className="text-center align-middle w-[9%]">{transaction.quantity || '-'}</TableCell>
+                      <TableCell className="text-center align-middle w-[9%]">
+                        <div className="flex justify-center items-center">
+                          {transaction.product_state ? (
+                            <span className={`px-2 py-1 rounded text-xs font-medium ${
+                              transaction.product_state === 'raw' 
+                                ? 'bg-amber-100 text-amber-800' 
+                                : 'bg-green-100 text-green-800'
+                            }`}>
+                              {transaction.product_state === 'raw' ? 'Raw' : 'Cured'}
+                            </span>
+                          ) : (
+                            '-'
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="align-middle w-[17%]">
+                        {transaction.from_warehouse_id && transaction.to_warehouse_id ? (
+                          <span className="text-sm text-muted-foreground">
+                            {warehouses?.find(w => w.id === transaction.from_warehouse_id)?.name} → {warehouses?.find(w => w.id === transaction.to_warehouse_id)?.name}
+                          </span>
+                        ) : transaction.from_warehouse_id ? (
+                          <span className="text-sm text-muted-foreground">
+                            {warehouses?.find(w => w.id === transaction.from_warehouse_id)?.name} (uscita)
+                          </span>
+                        ) : transaction.to_warehouse_id ? (
+                          <span className="text-sm text-muted-foreground">
+                            {warehouses?.find(w => w.id === transaction.to_warehouse_id)?.name} (entrata)
+                          </span>
+                        ) : (
+                          '-'
+                        )}
+                      </TableCell>
+                      <TableCell className="align-middle w-[17%]">
+                        {transaction.from_portfolio_id && transaction.to_portfolio_id ? (
+                          <span className="text-sm text-muted-foreground">
+                            {portfolios?.find(p => p.id === transaction.from_portfolio_id)?.name} → {portfolios?.find(p => p.id === transaction.to_portfolio_id)?.name}
+                          </span>
+                        ) : transaction.from_portfolio_id ? (
+                          <span className="text-sm text-muted-foreground">
+                            {portfolios?.find(p => p.id === transaction.from_portfolio_id)?.name} (uscita)
+                          </span>
+                        ) : transaction.to_portfolio_id ? (
+                          <span className="text-sm text-muted-foreground">
+                            {portfolios?.find(p => p.id === transaction.to_portfolio_id)?.name} (entrata)
+                          </span>
+                        ) : (
+                          '-'
+                        )}
+                      </TableCell>
+                      <TableCell className="text-center align-middle w-[11%]">
+                        {transaction.amount ? `€ ${transaction.amount.toFixed(2)}` : '-'}
+                      </TableCell>
+                      <TableCell className="text-center align-middle w-[120px]">
+                        <div className="flex justify-center gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleOpenDialog(transaction)}
+                            aria-label={`Modifica movimento del ${format(new Date(transaction.date), 'dd/MM/yyyy')}`}
+                          >
+                            <Pencil className="h-4 w-4" />
+                            <span className="sr-only">Modifica</span>
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setDeleteId(transaction.id!)}
+                            aria-label={`Elimina movimento del ${format(new Date(transaction.date), 'dd/MM/yyyy')}`}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            <span className="sr-only">Elimina</span>
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
+                      Nessun movimento registrato
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
 
-      {/* Debiti Pendenti - Prominente */}
-      {pendingDebts.length > 0 && (
-        <Card className="border-destructive/50 bg-destructive/5">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <AlertCircle className="h-5 w-5 text-destructive" />
-                <CardTitle className="text-lg">Debiti Pendenti</CardTitle>
-                <Badge variant="destructive">{pendingDebts.length}</Badge>
-              </div>
-            </div>
-            <CardDescription>
-              Ci sono {pendingDebts.length} debito{pendingDebts.length !== 1 ? 'i' : ''} in sospeso da saldare
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2 max-h-48 overflow-y-auto">
-              {pendingDebts.slice(0, 5).map((debt) => {
-                const type = transactionTypes?.find(t => t.id === debt.type_id)
-                const date = debt.date instanceof Date ? debt.date : new Date(debt.date)
+          {/* Card View Mobile */}
+          <div className="md:hidden space-y-4">
+            {paginatedTransactions.length > 0 ? (
+              paginatedTransactions.map((transaction) => {
+                const type = transactionTypes?.find(t => t.id === transaction.type_id)
                 return (
-                  <div
-                    key={debt.id}
-                    className="flex items-center justify-between p-3 rounded-lg border bg-background"
-                  >
-                    <div className="flex-1">
-                      <div className="font-medium">{type?.name || 'N/A'}</div>
-                      <div className="text-sm text-muted-foreground">
-                        {date.toLocaleDateString('it-IT')} - € {debt.amount?.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  <div key={transaction.id} className="border rounded-lg p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Calendar className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                        <span className="font-medium">
+                          {format(new Date(transaction.date), 'dd/MM/yyyy')}
+                        </span>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleOpenDialog(transaction)}
+                          aria-label={`Modifica movimento del ${format(new Date(transaction.date), 'dd/MM/yyyy')}`}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setDeleteId(transaction.id!)}
+                          aria-label={`Elimina movimento del ${format(new Date(transaction.date), 'dd/MM/yyyy')}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
                     </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleSettleDebt(debt)}
-                      className="ml-2"
-                    >
-                      <CheckCircle2 className="h-4 w-4 mr-1" />
-                      Salda
-                    </Button>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">Tipo:</span>
+                        <span>{type?.name || 'N/A'}</span>
+                      </div>
+                      {transaction.product_id && (
+                        <div className="flex items-center gap-2">
+                          <Package className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
+                          <span>
+                            {products?.find(p => p.id === transaction.product_id)?.strain || transaction.product_id}
+                            {transaction.quantity && ` - ${transaction.quantity}g`}
+                            {transaction.product_state && (
+                              <span className={`ml-2 px-2 py-0.5 rounded text-xs font-medium ${
+                                transaction.product_state === 'raw' 
+                                  ? 'bg-amber-100 text-amber-800' 
+                                  : 'bg-green-100 text-green-800'
+                              }`}>
+                                {transaction.product_state === 'raw' ? 'Raw' : 'Cured'}
+                              </span>
+                            )}
+                          </span>
+                        </div>
+                      )}
+                      {transaction.from_warehouse_id || transaction.to_warehouse_id ? (
+                        <div className="flex items-center gap-2">
+                          <Warehouse className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
+                          <span>
+                            {transaction.from_warehouse_id && transaction.to_warehouse_id ? (
+                              <>
+                                {warehouses?.find(w => w.id === transaction.from_warehouse_id)?.name} → {warehouses?.find(w => w.id === transaction.to_warehouse_id)?.name}
+                              </>
+                            ) : transaction.from_warehouse_id ? (
+                              <>
+                                {warehouses?.find(w => w.id === transaction.from_warehouse_id)?.name} (uscita)
+                              </>
+                            ) : (
+                              <>
+                                {warehouses?.find(w => w.id === transaction.to_warehouse_id)?.name} (entrata)
+                              </>
+                            )}
+                          </span>
+                        </div>
+                      ) : null}
+                      {transaction.from_portfolio_id || transaction.to_portfolio_id ? (
+                        <div className="flex items-center gap-2">
+                          <Wallet className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
+                          <span>
+                            {transaction.from_portfolio_id && transaction.to_portfolio_id ? (
+                              <>
+                                {portfolios?.find(p => p.id === transaction.from_portfolio_id)?.name} → {portfolios?.find(p => p.id === transaction.to_portfolio_id)?.name}
+                              </>
+                            ) : transaction.from_portfolio_id ? (
+                              <>
+                                {portfolios?.find(p => p.id === transaction.from_portfolio_id)?.name} (uscita)
+                              </>
+                            ) : (
+                              <>
+                                {portfolios?.find(p => p.id === transaction.to_portfolio_id)?.name} (entrata)
+                              </>
+                            )}
+                            {transaction.amount && ` - €${transaction.amount.toFixed(2)}`}
+                          </span>
+                        </div>
+                      ) : null}
+                    </div>
                   </div>
                 )
-              })}
-              {pendingDebts.length > 5 && (
-                <p className="text-sm text-muted-foreground text-center pt-2">
-                  ... e altri {pendingDebts.length - 5} debiti
-                </p>
-              )}
+              })
+            ) : (
+              <div className="text-center text-muted-foreground py-8">
+                Nessun movimento registrato
+              </div>
+            )}
+          </div>
+
+          {/* Paginazione - Mostra solo se ci sono più elementi della pageSize */}
+          {transactions && transactions.length > pageSize && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-2">
+              <div className="text-sm text-muted-foreground">
+                Mostrando {startIndex + 1}-{Math.min(endIndex, transactions.length)} di {transactions.length} movimenti
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  aria-label="Pagina precedente"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                    let pageNum: number
+                    if (totalPages <= 5) {
+                      pageNum = i + 1
+                    } else if (currentPage <= 3) {
+                      pageNum = i + 1
+                    } else if (currentPage >= totalPages - 2) {
+                      pageNum = totalPages - 4 + i
+                    } else {
+                      pageNum = currentPage - 2 + i
+                    }
+                    return (
+                      <Button
+                        key={pageNum}
+                        variant={currentPage === pageNum ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setCurrentPage(pageNum)}
+                        aria-label={`Vai alla pagina ${pageNum}`}
+                        aria-current={currentPage === pageNum ? "page" : undefined}
+                      >
+                        {pageNum}
+                      </Button>
+                    )
+                  })}
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  aria-label="Pagina successiva"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
-          </CardContent>
-        </Card>
+          )}
+        </>
       )}
 
-      {/* Layout Split View: Form + Lista */}
-      <div className="grid gap-6 lg:grid-cols-[400px_1fr]">
-        {/* Form Sinistra (sempre visibile su desktop) */}
-        <div className="space-y-4">
-          <Card className="sticky top-4">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-lg">
-                  {editingTransaction ? 'Modifica Movimento' : 'Nuovo Movimento'}
-                </CardTitle>
-                {editingTransaction && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={handleResetForm}
-                    aria-label="Annulla modifica"
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                {/* Tipo Movimento */}
-                <div className="space-y-2">
-                  <Label htmlFor="transaction-type">Tipo Movimento *</Label>
-                  <Select
-                    value={formData.type_id === 0 ? '' : formData.type_id.toString()}
-                    onValueChange={(v) => {
-                      const typeId = parseInt(v)
-                      const type = transactionTypes?.find(t => t.id === typeId)
-                      setFormData({
-                        ...formData,
-                        type_id: typeId,
-                        from_warehouse_id: type?.affects_warehouse ? formData.from_warehouse_id : undefined,
-                        to_warehouse_id: type?.affects_warehouse ? formData.to_warehouse_id : undefined,
-                        from_portfolio_id: type?.affects_portfolio ? formData.from_portfolio_id : undefined,
-                        to_portfolio_id: type?.affects_portfolio ? formData.to_portfolio_id : undefined,
-                        amount: type?.affects_portfolio ? formData.amount : undefined,
-                      })
-                    }}
-                  >
-                    <SelectTrigger id="transaction-type" aria-label="Seleziona tipo movimento">
-                      <SelectValue placeholder="Seleziona tipo movimento" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {transactionTypes?.map((type) => (
-                        <SelectItem key={type.id} value={type.id?.toString() || ''}>
-                          {type.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {formErrors.type_id && (
-                    <p className="text-sm text-destructive">{formErrors.type_id}</p>
-                  )}
-                </div>
-
-                {/* Data */}
-                <div className="space-y-2">
-                  <Label htmlFor="transaction-date">Data *</Label>
-                  <Input
-                    id="transaction-date"
-                    type="date"
-                    value={formatDateForInput(formData.date)}
-                    onChange={(e) => setFormData({ ...formData, date: new Date(e.target.value) })}
-                    required
-                  />
-                </div>
-
-                {/* Prodotto */}
-                {selectedTransactionType?.affects_warehouse && (
-                  <div className="space-y-2">
-                    <Label htmlFor="transaction-product">Prodotto</Label>
-                    <Select
-                      value={formData.product_id || ''}
-                      onValueChange={(v) => setFormData({ ...formData, product_id: v || undefined })}
-                    >
-                      <SelectTrigger id="transaction-product" aria-label="Seleziona prodotto">
-                        <SelectValue placeholder="Seleziona prodotto (opzionale)" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="">Nessun prodotto</SelectItem>
-                        {products?.map((product) => (
-                          <SelectItem key={product.id} value={product.id}>
-                            {product.strain}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-
-                {/* Quantità */}
-                {selectedTransactionType?.affects_warehouse && formData.product_id && (
-                  <div className="space-y-2">
-                    <Label htmlFor="transaction-quantity">Quantità (g)</Label>
-                    <Input
-                      id="transaction-quantity"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={formData.quantity || ''}
-                      onChange={(e) => setFormData({ ...formData, quantity: e.target.value ? parseFloat(e.target.value) : undefined })}
-                      placeholder="0.00"
-                    />
-                  </div>
-                )}
-
-                {/* Magazzini */}
-                {selectedTransactionType?.affects_warehouse && (
-                  <>
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <div className="space-y-2">
-                        <Label htmlFor="from-warehouse">Magazzino Origine</Label>
-                        <Select
-                          value={formData.from_warehouse_id?.toString() || ''}
-                          onValueChange={(v) => setFormData({ ...formData, from_warehouse_id: v ? parseInt(v) : undefined })}
-                        >
-                          <SelectTrigger id="from-warehouse" aria-label="Seleziona magazzino origine">
-                            <SelectValue placeholder="Nessuno" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="">Nessuno</SelectItem>
-                            {availableWarehouses.map((warehouse) => (
-                              <SelectItem key={warehouse.id} value={warehouse.id?.toString() || ''}>
-                                {warehouse.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="to-warehouse">Magazzino Destinazione</Label>
-                        <Select
-                          value={formData.to_warehouse_id?.toString() || ''}
-                          onValueChange={(v) => setFormData({ ...formData, to_warehouse_id: v ? parseInt(v) : undefined })}
-                        >
-                          <SelectTrigger id="to-warehouse" aria-label="Seleziona magazzino destinazione">
-                            <SelectValue placeholder="Nessuno" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="">Nessuno</SelectItem>
-                            {availableWarehouses.map((warehouse) => (
-                              <SelectItem key={warehouse.id} value={warehouse.id?.toString() || ''}>
-                                {warehouse.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                    {formErrors.warehouse && (
-                      <p className="text-sm text-destructive">{formErrors.warehouse}</p>
-                    )}
-                  </>
-                )}
-
-                {/* Portafogli */}
-                {selectedTransactionType?.affects_portfolio && (
-                  <>
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <div className="space-y-2">
-                        <Label htmlFor="from-portfolio">Portafoglio Origine</Label>
-                        <Select
-                          value={formData.from_portfolio_id?.toString() || ''}
-                          onValueChange={(v) => setFormData({ ...formData, from_portfolio_id: v ? parseInt(v) : undefined })}
-                        >
-                          <SelectTrigger id="from-portfolio" aria-label="Seleziona portafoglio origine">
-                            <SelectValue placeholder="Nessuno" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="">Nessuno</SelectItem>
-                            {availablePortfolios.map((portfolio) => (
-                              <SelectItem key={portfolio.id} value={portfolio.id?.toString() || ''}>
-                                {portfolio.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="to-portfolio">Portafoglio Destinazione</Label>
-                        <Select
-                          value={formData.to_portfolio_id?.toString() || ''}
-                          onValueChange={(v) => setFormData({ ...formData, to_portfolio_id: v ? parseInt(v) : undefined })}
-                        >
-                          <SelectTrigger id="to-portfolio" aria-label="Seleziona portafoglio destinazione">
-                            <SelectValue placeholder="Nessuno" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="">Nessuno</SelectItem>
-                            {availablePortfolios.map((portfolio) => (
-                              <SelectItem key={portfolio.id} value={portfolio.id?.toString() || ''}>
-                                {portfolio.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                    {formErrors.portfolio && (
-                      <p className="text-sm text-destructive">{formErrors.portfolio}</p>
-                    )}
-
-                    {/* Importo */}
-                    <div className="space-y-2">
-                      <Label htmlFor="transaction-amount">Importo (€) *</Label>
-                      <Input
-                        id="transaction-amount"
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={formData.amount || ''}
-                        onChange={(e) => setFormData({ ...formData, amount: e.target.value ? parseFloat(e.target.value) : undefined })}
-                        placeholder="0.00"
-                        aria-invalid={!!formErrors.amount}
-                      />
-                      {formErrors.amount && (
-                        <p className="text-sm text-destructive">{formErrors.amount}</p>
-                      )}
-                    </div>
-
-                    {/* Metodo Pagamento */}
-                    <div className="space-y-2">
-                      <Label htmlFor="payment-method">Metodo Pagamento</Label>
-                      <Select
-                        value={formData.payment_method || 'cash'}
-                        onValueChange={(v) => setFormData({ ...formData, payment_method: v as 'cash' | 'bancomat' | 'debito' })}
-                      >
-                        <SelectTrigger id="payment-method" aria-label="Seleziona metodo pagamento">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="cash">Cash</SelectItem>
-                          <SelectItem value="bancomat">Bancomat</SelectItem>
-                          <SelectItem value="debito">Debito</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    {/* Debito */}
-                    {formData.payment_method === 'debito' && (
-                      <div className="space-y-4">
-                        <div className="flex items-center space-x-2">
-                          <Switch
-                            id="is-debt"
-                            checked={formData.is_debt || false}
-                            onCheckedChange={(checked) => setFormData({ 
-                              ...formData, 
-                              is_debt: checked,
-                              debt_status: checked ? 'pending' : undefined
-                            })}
-                          />
-                          <Label htmlFor="is-debt">È un debito</Label>
-                        </div>
-                        {formData.is_debt && (
-                          <div className="space-y-2">
-                            <Label htmlFor="debt-status">Stato Debito</Label>
-                            <Select
-                              value={formData.debt_status || 'pending'}
-                              onValueChange={(v) => setFormData({ 
-                                ...formData, 
-                                debt_status: v as 'pending' | 'paid',
-                                debt_paid_date: v === 'paid' ? new Date() : undefined
-                              })}
-                            >
-                              <SelectTrigger id="debt-status" aria-label="Seleziona stato debito">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="pending">In Sospeso</SelectItem>
-                                <SelectItem value="paid">Saldato</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            {formErrors.debt_status && (
-                              <p className="text-sm text-destructive">{formErrors.debt_status}</p>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </>
-                )}
-
-                {/* Note */}
-                <div className="space-y-2">
-                  <Label htmlFor="transaction-notes">Note</Label>
-                  <Textarea
-                    id="transaction-notes"
-                    value={formData.notes || ''}
-                    onChange={(e) => setFormData({ ...formData, notes: e.target.value || undefined })}
-                    placeholder="Note aggiuntive (opzionale)"
-                    rows={3}
-                  />
-                </div>
-
-                {/* Submit Button */}
-                <Button 
-                  type="submit" 
-                  className="w-full"
-                  disabled={createMutation.isPending || updateMutation.isPending}
-                >
-                  {editingTransaction ? 'Salva Modifiche' : 'Crea Movimento'}
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Lista Movimenti Destra */}
-        <div className="space-y-4">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>Storico Movimenti</CardTitle>
-                  <CardDescription>
-                    {filteredTransactions.length} movimento{filteredTransactions.length !== 1 ? 'i' : ''} trovato{filteredTransactions.length !== 1 ? 'i' : ''}
-                  </CardDescription>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Filtri */}
-              <div className="grid gap-4 md:grid-cols-4">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Cerca movimento..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10"
-                    aria-label="Cerca movimenti"
-                  />
-                </div>
+      {/* Dialog Creazione/Modifica */}
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent 
+          className="max-w-2xl max-h-[90vh] overflow-y-auto w-[95vw] sm:w-full"
+          aria-describedby="transaction-dialog-description"
+        >
+          <DialogHeader>
+            <DialogTitle>
+              {editingTransaction ? 'Modifica Movimento' : 'Nuovo Movimento'}
+            </DialogTitle>
+            <DialogDescription id="transaction-dialog-description">
+              {editingTransaction
+                ? 'Modifica i dettagli del movimento'
+                : 'Crea un nuovo movimento di magazzino o portafoglio'}
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSubmit}>
+            <div className="space-y-4 py-4">
+              {/* Tipo Movimento */}
+              <div className="space-y-2">
+                <Label htmlFor="transaction-type">Tipo Movimento *</Label>
                 <Select
-                  value={filterTypeId === 'all' ? 'all' : filterTypeId.toString()}
-                  onValueChange={(v) => setFilterTypeId(v === 'all' ? 'all' : parseInt(v))}
+                  value={selectedTypeId?.toString() || ''}
+                  onValueChange={(value) => {
+                    const typeId = parseInt(value)
+                    setSelectedTypeId(typeId)
+                    setFormData({ ...formData, type_id: typeId })
+                    setErrors({ ...errors, type_id: '' })
+                  }}
+                  disabled={!!editingTransaction}
                 >
-                  <SelectTrigger aria-label="Filtra per tipo movimento">
-                    <SelectValue placeholder="Tipo Movimento" />
+                  <SelectTrigger className={errors.type_id ? 'border-red-500' : ''}>
+                    <SelectValue placeholder="Seleziona tipo movimento" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">Tutti i tipi</SelectItem>
                     {transactionTypes?.map((type) => (
-                      <SelectItem key={type.id} value={type.id?.toString() || ''}>
+                      <SelectItem key={type.id} value={type.id!.toString()}>
                         {type.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                <Select
-                  value={filterProductId}
-                  onValueChange={(v) => setFilterProductId(v)}
-                >
-                  <SelectTrigger aria-label="Filtra per prodotto">
-                    <SelectValue placeholder="Prodotto" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Tutti i prodotti</SelectItem>
-                    {products?.map((product) => (
-                      <SelectItem key={product.id} value={product.id}>
-                        {product.strain}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Select
-                  value={filterEntityId === 'all' ? 'all' : filterEntityId.toString()}
-                  onValueChange={(v) => setFilterEntityId(v === 'all' ? 'all' : parseInt(v))}
-                >
-                  <SelectTrigger aria-label="Filtra per entità">
-                    <SelectValue placeholder="Entità" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Tutte le entità</SelectItem>
-                    {entities?.map((entity) => (
-                      <SelectItem key={entity.id} value={entity.id?.toString() || ''}>
-                        {entity.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {errors.type_id && (
+                  <p className="text-sm text-red-500">{errors.type_id}</p>
+                )}
+                {selectedType?.description && (
+                  <div className="flex items-start gap-2 p-3 bg-muted rounded-md text-sm text-muted-foreground" role="note" aria-label="Descrizione tipo movimento">
+                    <Info className="h-4 w-4 mt-0.5 flex-shrink-0" aria-hidden="true" />
+                    <span>{selectedType.description}</span>
+                  </div>
+                )}
               </div>
 
-              {/* Tabella Movimenti */}
-              {filteredTransactions.length === 0 ? (
-                <div className="text-center py-12 text-muted-foreground">
-                  <Package className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p className="font-medium">Nessun movimento trovato</p>
-                  <p className="text-sm mt-1">
-                    {searchTerm || filterTypeId !== 'all' || filterProductId !== 'all' || filterEntityId !== 'all'
-                      ? 'Prova a modificare i filtri di ricerca'
-                      : 'Crea il primo movimento per iniziare'}
-                  </p>
-                </div>
-              ) : (
-                <div className="rounded-md border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Data</TableHead>
-                        <TableHead>Tipo</TableHead>
-                        <TableHead>Prodotto</TableHead>
-                        <TableHead>Quantità</TableHead>
-                        <TableHead>Magazzini</TableHead>
-                        <TableHead>Portafogli</TableHead>
-                        <TableHead>Importo</TableHead>
-                        <TableHead>Azioni</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredTransactions.map((transaction) => {
-                        const type = transactionTypes?.find(t => t.id === transaction.type_id)
-                        const product = products?.find(p => p.id === transaction.product_id)
-                        const fromWarehouse = transaction.from_warehouse_id ? warehouseMap.get(transaction.from_warehouse_id) : null
-                        const toWarehouse = transaction.to_warehouse_id ? warehouseMap.get(transaction.to_warehouse_id) : null
-                        const fromPortfolio = transaction.from_portfolio_id ? portfolioMap.get(transaction.from_portfolio_id) : null
-                        const toPortfolio = transaction.to_portfolio_id ? portfolioMap.get(transaction.to_portfolio_id) : null
-                        const date = transaction.date instanceof Date ? transaction.date : new Date(transaction.date)
+              {/* Data */}
+              <div className="space-y-2">
+                <Label htmlFor="date">Data *</Label>
+                <Input
+                  id="date"
+                  type="date"
+                  value={formData.date ? format(new Date(formData.date), 'yyyy-MM-dd') : ''}
+                  onChange={(e) => setFormData({ ...formData, date: new Date(e.target.value) })}
+                  required
+                />
+              </div>
 
-                        return (
-                          <TableRow key={transaction.id}>
-                            <TableCell>
-                              {date.toLocaleDateString('it-IT')}
-                            </TableCell>
-                            <TableCell className="font-medium">
-                              {type?.name || 'N/A'}
-                            </TableCell>
-                            <TableCell>
-                              {product?.strain || transaction.product_id || '-'}
-                            </TableCell>
-                            <TableCell>
-                              {transaction.quantity ? `${transaction.quantity.toLocaleString('it-IT')} g` : '-'}
-                            </TableCell>
-                            <TableCell className="text-sm">
-                              {fromWarehouse && toWarehouse ? (
-                                <span>{fromWarehouse.name} → {toWarehouse.name}</span>
-                              ) : fromWarehouse ? (
-                                <span className="text-muted-foreground">→ {fromWarehouse.name}</span>
-                              ) : toWarehouse ? (
-                                <span>{toWarehouse.name}</span>
-                              ) : (
-                                '-'
-                              )}
-                            </TableCell>
-                            <TableCell className="text-sm">
-                              {fromPortfolio && toPortfolio ? (
-                                <span>{fromPortfolio.name} → {toPortfolio.name}</span>
-                              ) : fromPortfolio ? (
-                                <span className="text-muted-foreground">→ {fromPortfolio.name}</span>
-                              ) : toPortfolio ? (
-                                <span>{toPortfolio.name}</span>
-                              ) : (
-                                '-'
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              {transaction.amount ? (
-                                <span className={transaction.is_debt && transaction.debt_status === 'pending' ? 'text-destructive font-medium' : ''}>
-                                  € {transaction.amount.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                  {transaction.is_debt && transaction.debt_status === 'pending' && (
-                                    <span className="ml-1 text-xs">(Debito)</span>
-                                  )}
-                                </span>
-                              ) : (
-                                '-'
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex gap-2">
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => handleEdit(transaction)}
-                                  aria-label={`Modifica movimento ${transaction.id}`}
-                                >
-                                  <Pencil className="h-4 w-4" />
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => transaction.id && handleDelete(transaction.id)}
-                                  className="text-destructive hover:text-destructive"
-                                  aria-label={`Elimina movimento ${transaction.id}`}
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        )
-                      })}
-                    </TableBody>
-                  </Table>
+              {/* Prodotto (se richiesto dal tipo) */}
+              {selectedType?.requires_product && (
+                <div className="space-y-2">
+                  <Label htmlFor="product">Strain *</Label>
+                  <Select
+                    value={formData.product_id || undefined}
+                    onValueChange={(value) => {
+                      setFormData({ ...formData, product_id: value })
+                      setErrors({ ...errors, product_id: '' })
+                    }}
+                  >
+                    <SelectTrigger className={errors.product_id ? 'border-red-500' : (!formData.product_id ? 'border-red-300' : '')}>
+                      <SelectValue placeholder="Seleziona strain" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {products?.map((product) => (
+                        <SelectItem key={product.id} value={product.id}>
+                          {product.strain}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {errors.product_id && (
+                    <p className="text-sm text-red-500">{errors.product_id}</p>
+                  )}
                 </div>
               )}
 
-              {/* Paginazione */}
-              {transactionsData && transactionsData.totalPages > 1 && (
-                <div className="flex items-center justify-between">
-                  <div className="text-sm text-muted-foreground">
-                    Pagina {page} di {transactionsData.totalPages}
+              {/* Quantità (se richiesto prodotto) */}
+              {selectedType?.requires_product && (
+                <div className="space-y-2">
+                  <Label htmlFor="quantity">Quantità (g) *</Label>
+                  <Input
+                    id="quantity"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={formData.quantity || ''}
+                    onChange={(e) => {
+                      setFormData({ ...formData, quantity: parseFloat(e.target.value) || undefined })
+                      setErrors({ ...errors, quantity: '' })
+                    }}
+                    placeholder="0.00"
+                    className={errors.quantity ? 'border-red-500' : ''}
+                    required={selectedType.requires_product}
+                  />
+                  {errors.quantity && (
+                    <p className="text-sm text-red-500">{errors.quantity}</p>
+                  )}
+                </div>
+              )}
+
+              {/* Stato Prodotto (solo se richiesto prodotto) */}
+              {selectedType?.requires_product && (
+                <div className="space-y-2">
+                  {selectedType.transforms_state ? (
+                    <div className="space-y-4 p-4 border rounded-lg bg-muted/30">
+                      <div className="flex items-center gap-2 text-sm font-medium">
+                        <span>Trasformazione di Stato</span>
+                      </div>
+                      <div className="grid grid-cols-[1fr_auto_1fr] gap-4 items-center">
+                        <div className="space-y-2">
+                          <Label htmlFor="from-state">Stato Iniziale</Label>
+                          <div className="px-3 py-2 border rounded-md bg-background">
+                            <span className={`px-2 py-1 rounded text-xs font-medium ${
+                              selectedType.from_state === 'raw' 
+                                ? 'bg-amber-100 text-amber-800' 
+                                : 'bg-green-100 text-green-800'
+                            }`}>
+                              {selectedType.from_state === 'raw' ? 'Raw' : 'Cured'}
+                            </span>
+                          </div>
+                          <p className="text-xs text-muted-foreground">Stato del prodotto prima della trasformazione</p>
+                        </div>
+                        <div className="pt-6 flex items-center justify-center">
+                          <ArrowRight className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="to-state">Stato Finale</Label>
+                          <div className="px-3 py-2 border rounded-md bg-background">
+                            <span className={`px-2 py-1 rounded text-xs font-medium ${
+                              selectedType.to_state === 'raw' 
+                                ? 'bg-amber-100 text-amber-800' 
+                                : 'bg-green-100 text-green-800'
+                            }`}>
+                              {selectedType.to_state === 'raw' ? 'Raw' : 'Cured'}
+                            </span>
+                          </div>
+                          <p className="text-xs text-muted-foreground">Stato del prodotto dopo la trasformazione</p>
+                        </div>
+                      </div>
+                      {formData.from_warehouse_id && formData.to_warehouse_id && formData.from_warehouse_id === formData.to_warehouse_id && (
+                        <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-800">
+                          <p><strong>Trasformazione interna:</strong> Il prodotto rimane nello stesso magazzino ma cambia stato da <strong>{selectedType.from_state === 'raw' ? 'Raw' : 'Cured'}</strong> a <strong>{selectedType.to_state === 'raw' ? 'Raw' : 'Cured'}</strong>.</p>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <Label htmlFor="product-state">Stato Prodotto</Label>
+                      <Select
+                        value={formData.product_state || undefined}
+                        onValueChange={(value) => setFormData({ ...formData, product_state: value as 'raw' | 'cured' })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Seleziona stato (opzionale)" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="raw">Raw</SelectItem>
+                          <SelectItem value="cured">Cured</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Magazzino - Mostra campi in base alla direzione */}
+              {selectedType?.affects_warehouse && (
+                <div className="space-y-4 p-4 border rounded-lg" role="group" aria-labelledby="warehouse-section">
+                  <div className="flex items-center gap-2 text-sm font-medium" id="warehouse-section">
+                    <Warehouse className="h-4 w-4" aria-hidden="true" />
+                    Magazzino
                   </div>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setPage(p => Math.max(1, p - 1))}
-                      disabled={page === 1}
-                    >
-                      Precedente
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setPage(p => Math.min(transactionsData.totalPages, p + 1))}
-                      disabled={page === transactionsData.totalPages}
-                    >
-                      Successiva
-                    </Button>
+                  {selectedType.warehouse_direction === 'transfer' && (
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-[1fr_auto_1fr] gap-4 items-end">
+                        <div className="space-y-2">
+                          <Label htmlFor="from-warehouse">Da Magazzino *</Label>
+                          <Select
+                            value={formData.from_warehouse_id?.toString() || undefined}
+                            onValueChange={(value) => {
+                              setFormData({ ...formData, from_warehouse_id: value ? parseInt(value) : undefined })
+                              setErrors({ ...errors, from_warehouse_id: '' })
+                            }}
+                          >
+                            <SelectTrigger className={errors.from_warehouse_id ? 'border-red-500' : (!formData.from_warehouse_id ? 'border-red-300' : '')}>
+                              <SelectValue placeholder="Seleziona magazzino" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {warehouses?.map((warehouse) => (
+                                <SelectItem key={warehouse.id} value={warehouse.id!.toString()}>
+                                  {warehouse.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {errors.from_warehouse_id && (
+                            <p className="text-sm text-red-500">{errors.from_warehouse_id}</p>
+                          )}
+                        </div>
+                        <div className="pb-2 flex items-center justify-center">
+                          <ArrowRight className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="to-warehouse">A Magazzino *</Label>
+                          <Select
+                            value={formData.to_warehouse_id?.toString() || undefined}
+                            onValueChange={(value) => {
+                              setFormData({ ...formData, to_warehouse_id: value ? parseInt(value) : undefined })
+                              setErrors({ ...errors, to_warehouse_id: '' })
+                            }}
+                          >
+                            <SelectTrigger className={errors.to_warehouse_id ? 'border-red-500' : (!formData.to_warehouse_id ? 'border-red-300' : '')}>
+                              <SelectValue placeholder="Seleziona magazzino" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {warehouses?.map((warehouse) => (
+                                <SelectItem key={warehouse.id} value={warehouse.id!.toString()}>
+                                  {warehouse.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {errors.to_warehouse_id && (
+                            <p className="text-sm text-red-500">{errors.to_warehouse_id}</p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {selectedType.warehouse_direction === 'in' && (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <ArrowDown className="h-4 w-4 text-green-600" aria-hidden="true" />
+                        <Label htmlFor="to-warehouse">Magazzino Destinazione (Entrata) *</Label>
+                      </div>
+                        <Select
+                          value={formData.to_warehouse_id?.toString() || undefined}
+                          onValueChange={(value) => {
+                            setFormData({ ...formData, to_warehouse_id: value ? parseInt(value) : undefined })
+                            setErrors({ ...errors, to_warehouse_id: '' })
+                          }}
+                        >
+                          <SelectTrigger className={errors.to_warehouse_id ? 'border-red-500' : (!formData.to_warehouse_id ? 'border-red-300' : '')}>
+                          <SelectValue placeholder="Seleziona magazzino" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {warehouses?.map((warehouse) => (
+                            <SelectItem key={warehouse.id} value={warehouse.id!.toString()}>
+                              {warehouse.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {errors.to_warehouse_id && (
+                        <p className="text-sm text-red-500 mt-1">{errors.to_warehouse_id}</p>
+                      )}
+                    </div>
+                  )}
+                  {selectedType.warehouse_direction === 'out' && (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <ArrowUp className="h-4 w-4 text-red-600" aria-hidden="true" />
+                        <Label htmlFor="from-warehouse">Magazzino Origine (Uscita) *</Label>
+                      </div>
+                      <Select
+                        value={formData.from_warehouse_id?.toString() || undefined}
+                        onValueChange={(value) => setFormData({ ...formData, from_warehouse_id: value ? parseInt(value) : undefined })}
+                      >
+                        <SelectTrigger className={!formData.from_warehouse_id ? 'border-red-300' : ''}>
+                          <SelectValue placeholder="Seleziona magazzino" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {warehouses?.map((warehouse) => (
+                            <SelectItem key={warehouse.id} value={warehouse.id!.toString()}>
+                              {warehouse.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {errors.from_warehouse_id && (
+                        <p className="text-sm text-red-500 mt-1">{errors.from_warehouse_id}</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Portafoglio - Mostra campi in base alla direzione */}
+              {selectedType?.affects_portfolio && (
+                <div className="space-y-4 p-4 border rounded-lg" role="group" aria-labelledby="portfolio-section">
+                  <div className="flex items-center gap-2 text-sm font-medium" id="portfolio-section">
+                    <Wallet className="h-4 w-4" aria-hidden="true" />
+                    Portafoglio
+                  </div>
+                  {selectedType.portfolio_direction === 'transfer' && (
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-[1fr_auto_1fr] gap-4 items-end">
+                        <div className="space-y-2">
+                          <Label htmlFor="from-portfolio">Da Portafoglio *</Label>
+                          <Select
+                            value={formData.from_portfolio_id?.toString() || undefined}
+                            onValueChange={(value) => {
+                              setFormData({ ...formData, from_portfolio_id: value ? parseInt(value) : undefined })
+                              setErrors({ ...errors, from_portfolio_id: '' })
+                            }}
+                          >
+                            <SelectTrigger className={errors.from_portfolio_id ? 'border-red-500' : (!formData.from_portfolio_id ? 'border-red-300' : '')}>
+                              <SelectValue placeholder="Seleziona portafoglio" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {portfolios?.map((portfolio) => (
+                                <SelectItem key={portfolio.id} value={portfolio.id!.toString()}>
+                                  {portfolio.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {errors.from_portfolio_id && (
+                            <p className="text-sm text-red-500">{errors.from_portfolio_id}</p>
+                          )}
+                        </div>
+                        <div className="pb-2 flex items-center justify-center">
+                          <ArrowRight className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="to-portfolio">A Portafoglio *</Label>
+                          <Select
+                            value={formData.to_portfolio_id?.toString() || undefined}
+                            onValueChange={(value) => {
+                              setFormData({ ...formData, to_portfolio_id: value ? parseInt(value) : undefined })
+                              setErrors({ ...errors, to_portfolio_id: '' })
+                            }}
+                          >
+                            <SelectTrigger className={errors.to_portfolio_id ? 'border-red-500' : (!formData.to_portfolio_id ? 'border-red-300' : '')}>
+                              <SelectValue placeholder="Seleziona portafoglio" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {portfolios?.map((portfolio) => (
+                                <SelectItem key={portfolio.id} value={portfolio.id!.toString()}>
+                                  {portfolio.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {errors.to_portfolio_id && (
+                            <p className="text-sm text-red-500">{errors.to_portfolio_id}</p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {selectedType.portfolio_direction === 'in' && (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <ArrowDown className="h-4 w-4 text-green-600" aria-hidden="true" />
+                        <Label htmlFor="to-portfolio">Portafoglio Destinazione (Entrata) *</Label>
+                      </div>
+                      <Select
+                        value={formData.to_portfolio_id?.toString() || undefined}
+                        onValueChange={(value) => setFormData({ ...formData, to_portfolio_id: value ? parseInt(value) : undefined })}
+                      >
+                        <SelectTrigger className={!formData.to_portfolio_id ? 'border-red-300' : ''}>
+                          <SelectValue placeholder="Seleziona portafoglio" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {portfolios?.map((portfolio) => (
+                            <SelectItem key={portfolio.id} value={portfolio.id!.toString()}>
+                              {portfolio.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {errors.to_portfolio_id && (
+                        <p className="text-sm text-red-500 mt-1">{errors.to_portfolio_id}</p>
+                      )}
+                    </div>
+                  )}
+                  {selectedType.portfolio_direction === 'out' && (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <ArrowUp className="h-4 w-4 text-red-600" aria-hidden="true" />
+                        <Label htmlFor="from-portfolio">Portafoglio Origine (Uscita) *</Label>
+                      </div>
+                      <Select
+                        value={formData.from_portfolio_id?.toString() || undefined}
+                        onValueChange={(value) => setFormData({ ...formData, from_portfolio_id: value ? parseInt(value) : undefined })}
+                      >
+                        <SelectTrigger className={!formData.from_portfolio_id ? 'border-red-300' : ''}>
+                          <SelectValue placeholder="Seleziona portafoglio" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {portfolios?.map((portfolio) => (
+                            <SelectItem key={portfolio.id} value={portfolio.id!.toString()}>
+                              {portfolio.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {errors.from_portfolio_id && (
+                        <p className="text-sm text-red-500 mt-1">{errors.from_portfolio_id}</p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Importo */}
+                  <div className="space-y-2">
+                    <Label htmlFor="amount">Importo (€) *</Label>
+                    <Input
+                      id="amount"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={formData.amount || ''}
+                      onChange={(e) => setFormData({ ...formData, amount: parseFloat(e.target.value) || undefined })}
+                      placeholder="0.00"
+                      required
+                    />
+                  </div>
+
+                  {/* Tipo Pagamento */}
+                  {selectedType.payment_type && (
+                    <div className="space-y-2">
+                      <Label htmlFor="payment-method">Metodo Pagamento</Label>
+                      <Select
+                        value={formData.payment_method || undefined}
+                        onValueChange={(value) => setFormData({ ...formData, payment_method: value as 'cash' | 'bancomat' | 'debito' })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Seleziona metodo" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="cash">Contanti</SelectItem>
+                          <SelectItem value="bancomat">Bancomat</SelectItem>
+                          <SelectItem value="debito">Debito</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
+                  {/* Debito */}
+                  {selectedType.payment_type === 'monthly' && (
+                    <div className="space-y-2">
+                      <Label>
+                        <input
+                          type="checkbox"
+                          checked={formData.is_debt || false}
+                          onChange={(e) => {
+                            setFormData({
+                              ...formData,
+                              is_debt: e.target.checked,
+                              debt_status: e.target.checked ? 'pending' : undefined,
+                            })
+                          }}
+                          className="mr-2"
+                        />
+                        Pagamento con debito
+                      </Label>
+                      {formData.is_debt && (
+                        <div className="space-y-2 ml-6">
+                          <Label htmlFor="debt-status">Stato Debito</Label>
+                          <Select
+                            value={formData.debt_status || 'pending'}
+                            onValueChange={(value) => setFormData({ ...formData, debt_status: value as 'pending' | 'paid' })}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="pending">In sospeso</SelectItem>
+                              <SelectItem value="paid">Pagato</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Anteprima Movimento */}
+              {selectedType && (
+                <div className="p-4 bg-muted rounded-lg border-2 border-dashed" role="region" aria-labelledby="preview-heading">
+                  <div className="flex items-center gap-2 mb-3" id="preview-heading">
+                    <Info className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                    <Label className="text-sm font-semibold">Anteprima Movimento</Label>
+                  </div>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">Tipo:</span>
+                      <span>{selectedType.name}</span>
+                    </div>
+                    {formData.product_id && (
+                      <div className="flex items-center gap-2">
+                        <Package className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
+                        <span>
+                          <span className="font-medium">Strain:</span> {products?.find(p => p.id === formData.product_id)?.strain || formData.product_id}
+                          {formData.quantity && ` - ${formData.quantity}g`}
+                          {selectedType.transforms_state ? (
+                            <span className="ml-1">
+                              ({selectedType.from_state === 'raw' ? 'Raw' : 'Cured'} → {selectedType.to_state === 'raw' ? 'Raw' : 'Cured'})
+                            </span>
+                          ) : (
+                            formData.product_state && ` (${formData.product_state === 'raw' ? 'Raw' : 'Cured'})`
+                          )}
+                        </span>
+                      </div>
+                    )}
+                    {selectedType.affects_warehouse && (
+                      <div className="flex items-center gap-2">
+                        <Warehouse className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
+                        <span>
+                          {selectedType.warehouse_direction === 'transfer' && formData.from_warehouse_id && formData.to_warehouse_id && (
+                            <>
+                              <span className="font-medium">Magazzino:</span> {
+                                formData.from_warehouse_id === formData.to_warehouse_id ? (
+                                  <span>{warehouses?.find(w => w.id === formData.from_warehouse_id)?.name} <span className="text-muted-foreground">(trasformazione interna)</span></span>
+                                ) : (
+                                  <span>{warehouses?.find(w => w.id === formData.from_warehouse_id)?.name} → {warehouses?.find(w => w.id === formData.to_warehouse_id)?.name}</span>
+                                )
+                              }
+                            </>
+                          )}
+                          {selectedType.warehouse_direction === 'in' && formData.to_warehouse_id && (
+                            <>
+                              <span className="font-medium">Magazzino:</span> Entrata in {warehouses?.find(w => w.id === formData.to_warehouse_id)?.name}
+                            </>
+                          )}
+                          {selectedType.warehouse_direction === 'out' && formData.from_warehouse_id && (
+                            <>
+                              <span className="font-medium">Magazzino:</span> Uscita da {warehouses?.find(w => w.id === formData.from_warehouse_id)?.name}
+                            </>
+                          )}
+                          {!formData.from_warehouse_id && !formData.to_warehouse_id && (
+                            <span className="text-muted-foreground italic">Seleziona magazzino</span>
+                          )}
+                        </span>
+                      </div>
+                    )}
+                    {selectedType.affects_portfolio && (
+                      <div className="flex items-center gap-2">
+                        <Wallet className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
+                        <span>
+                          {selectedType.portfolio_direction === 'transfer' && formData.from_portfolio_id && formData.to_portfolio_id && (
+                            <>
+                              <span className="font-medium">Portafoglio:</span> {portfolios?.find(p => p.id === formData.from_portfolio_id)?.name} → {portfolios?.find(p => p.id === formData.to_portfolio_id)?.name}
+                              {formData.amount && ` (€${formData.amount.toFixed(2)})`}
+                            </>
+                          )}
+                          {selectedType.portfolio_direction === 'in' && formData.to_portfolio_id && (
+                            <>
+                              <span className="font-medium">Portafoglio:</span> Entrata in {portfolios?.find(p => p.id === formData.to_portfolio_id)?.name}
+                              {formData.amount && ` (€${formData.amount.toFixed(2)})`}
+                            </>
+                          )}
+                          {selectedType.portfolio_direction === 'out' && formData.from_portfolio_id && (
+                            <>
+                              <span className="font-medium">Portafoglio:</span> Uscita da {portfolios?.find(p => p.id === formData.from_portfolio_id)?.name}
+                              {formData.amount && ` (€${formData.amount.toFixed(2)})`}
+                            </>
+                          )}
+                          {!formData.from_portfolio_id && !formData.to_portfolio_id && (
+                            <span className="text-muted-foreground italic">Seleziona portafoglio</span>
+                          )}
+                        </span>
+                      </div>
+                    )}
+                    {formData.is_debt && (
+                      <div className="flex items-center gap-2 text-amber-600">
+                        <span className="font-medium">⚠ Debito:</span> {formData.debt_status === 'paid' ? 'Pagato' : 'In sospeso'}
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
-            </CardContent>
-          </Card>
-        </div>
-      </div>
 
-      {/* AlertDialog per conferma eliminazione */}
-      <AlertDialog
-        open={confirmDeleteDialog.open}
-        onOpenChange={(open) => setConfirmDeleteDialog({ open, transactionId: null })}
-      >
+              {/* Note */}
+              <div className="space-y-2">
+                <Label htmlFor="notes">Note</Label>
+                <Textarea
+                  id="notes"
+                  value={formData.notes || ''}
+                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                  placeholder="Note aggiuntive..."
+                  rows={3}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button 
+                type="button" 
+                variant="outline" 
+                onClick={handleCloseDialog}
+                aria-label="Annulla e chiudi dialog"
+              >
+                Annulla
+              </Button>
+              <Button 
+                type="submit"
+                aria-label={editingTransaction ? 'Salva modifiche movimento' : 'Crea nuovo movimento'}
+              >
+                {editingTransaction ? 'Salva Modifiche' : 'Crea Movimento'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Conferma Eliminazione */}
+      <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Elimina movimento</AlertDialogTitle>
+            <AlertDialogTitle>Conferma eliminazione</AlertDialogTitle>
             <AlertDialogDescription>
-              Sei sicuro di voler eliminare questo movimento? Questa azione non può essere annullata e influenzerà lo stock calcolato.
+              Sei sicuro di voler eliminare questo movimento? Questa azione non può essere annullata.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Annulla</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={performDelete}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
+            <AlertDialogAction onClick={() => deleteId && handleDelete(deleteId)}>
               Elimina
             </AlertDialogAction>
           </AlertDialogFooter>

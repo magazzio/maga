@@ -34,7 +34,7 @@ export interface Product {
   strain: string // Nome/Strain del prodotto
   note?: string
   active: boolean // Stato attivo/inattivo (default: true)
-  price_per_gram?: number // Costo per grammo (€/g) - costo fisso quando acquista da Driplug
+  price_per_gram?: number // Costo per grammo (€/g)
 }
 
 export interface Entity {
@@ -64,6 +64,16 @@ export interface TransactionType {
   affects_warehouse: boolean
   affects_portfolio: boolean
   payment_type?: 'monthly' | 'instant'
+  warehouse_direction?: 'in' | 'out' | 'transfer'
+  portfolio_direction?: 'in' | 'out' | 'transfer'
+  suggested_from_warehouse_id?: number
+  suggested_to_warehouse_id?: number
+  suggested_from_portfolio_id?: number
+  suggested_to_portfolio_id?: number
+  requires_product?: boolean
+  transforms_state?: boolean // Indica se questo movimento trasforma lo stato del prodotto
+  from_state?: 'raw' | 'cured' // Stato iniziale (solo se transforms_state = true)
+  to_state?: 'raw' | 'cured' // Stato finale (solo se transforms_state = true)
   custom_fields?: Record<string, any>
 }
 
@@ -71,12 +81,14 @@ export interface Transaction {
   id?: number
   type_id: number
   date: Date
-  product_id?: string // Cambiato da number a string
+  product_id?: string
   quantity?: number
+  product_state?: 'raw' | 'cured'
   from_warehouse_id?: number
   to_warehouse_id?: number
   from_portfolio_id?: number
   to_portfolio_id?: number
+  customer_id?: string // Riferimento al cliente (opzionale)
   amount?: number
   payment_method?: 'cash' | 'bancomat' | 'debito'
   is_debt?: boolean
@@ -86,32 +98,21 @@ export interface Transaction {
   metadata?: Record<string, any>
 }
 
-export interface Stock {
-  id?: number
-  product_id: string // Cambiato da number a string
-  warehouse_id: number
-  quantity: number // Calcolata dai movimenti
-  reserved_quantity?: number
-  batch?: string
-  cut?: string
-  state?: 'Raw' | 'Cured'
-  notes?: string
-}
-
 export interface Customer {
-  id?: number
+  id?: string // Formato "C" + 3 numeri (es. C123)
   name: string
   contact_info?: string
   notes?: string
-  is_referral?: boolean // Se true, questo cliente è un referral
-  referral_color?: ReferralColor // Colore del referral (solo se is_referral = true)
-  referred_by?: number // ID del cliente referral che lo ha referenziato (opzionale)
+  active?: boolean // Stato attivo/inattivo (default: true)
+  is_referral?: boolean
+  referral_color?: ReferralColor
+  referred_by?: string // Riferimento a Customer.id
 }
 
 export interface StockMovement {
   id?: number
   transaction_id: number
-  product_id: string // Cambiato da number a string
+  product_id: string
   warehouse_id: number
   quantity_change: number
   quantity_before: number
@@ -127,286 +128,25 @@ class MagazzDatabase extends Dexie {
   portfolios!: Table<Portfolio>
   transactionTypes!: Table<TransactionType>
   transactions!: Table<Transaction>
-  stock!: Table<Stock>
   customers!: Table<Customer>
   stockMovements!: Table<StockMovement>
 
   constructor() {
     super('MagazzDatabase')
     
-    this.version(1).stores({
-      products: '++id, name, owner',
-      warehouses: '++id, name, owner',
-      portfolios: '++id, name, owner',
+    // Versione 100: Schema base (versione aumentata per risolvere conflitti)
+    this.version(100).stores({
+      productTypes: '++id, name, color',
+      products: 'id, tipo_id, strain, active',
+      entities: '++id, name',
+      warehouses: '++id, name, entity_id',
+      portfolios: '++id, name, entity_id',
       transactionTypes: '++id, name',
       transactions: '++id, type_id, date, product_id, from_warehouse_id, to_warehouse_id',
-      stock: '++id, product_id, warehouse_id',
-      customers: '++id, name',
+      customers: 'id, name, is_referral, referred_by',
       stockMovements: '++id, transaction_id, product_id, warehouse_id, date'
     })
-    
-    // Versione 2: nuovo schema prodotti
-    this.version(2)
-      .stores({
-        productTypes: '++id, name',
-        products: 'id, tipo_id, strain',
-        warehouses: '++id, name, owner',
-        portfolios: '++id, name, owner',
-        transactionTypes: '++id, name',
-        transactions: '++id, type_id, date, product_id, from_warehouse_id, to_warehouse_id',
-        stock: '++id, product_id, warehouse_id',
-        customers: '++id, name',
-        stockMovements: '++id, transaction_id, product_id, warehouse_id, date'
-      })
-      .upgrade(async (tx) => {
-        // Migrazione: elimina vecchi prodotti se esistono (schema incompatibile)
-        // L'utente dovrà ricreare i prodotti con il nuovo schema
-        await tx.table('products').clear()
-      })
-    
-    // Versione 3: aggiunto campo color ai ProductType
-    this.version(3)
-      .stores({
-        productTypes: '++id, name, color',
-        products: 'id, tipo_id, strain',
-        warehouses: '++id, name, owner',
-        portfolios: '++id, name, owner',
-        transactionTypes: '++id, name',
-        transactions: '++id, type_id, date, product_id, from_warehouse_id, to_warehouse_id',
-        stock: '++id, product_id, warehouse_id',
-        customers: '++id, name',
-        stockMovements: '++id, transaction_id, product_id, warehouse_id, date'
-      })
-      .upgrade(async (tx) => {
-        // Migrazione: assegna colore di default 'blue' ai tipi esistenti
-        const productTypes = await tx.table('productTypes').toArray()
-        for (const type of productTypes) {
-          if (!type.color) {
-            await tx.table('productTypes').update(type.id!, { color: 'blue' })
-          }
-        }
-      })
-    
-    // Versione 4: aggiunto campo active ai Product
-    this.version(4)
-      .stores({
-        productTypes: '++id, name, color',
-        products: 'id, tipo_id, strain, active',
-        warehouses: '++id, name, owner',
-        portfolios: '++id, name, owner',
-        transactionTypes: '++id, name',
-        transactions: '++id, type_id, date, product_id, from_warehouse_id, to_warehouse_id',
-        stock: '++id, product_id, warehouse_id',
-        customers: '++id, name',
-        stockMovements: '++id, transaction_id, product_id, warehouse_id, date'
-      })
-      .upgrade(async (tx) => {
-        // Migrazione: assegna active: true ai prodotti esistenti
-        const products = await tx.table('products').toArray()
-        for (const product of products) {
-          if (product.active === undefined) {
-            await tx.table('products').update(product.id!, { active: true })
-          }
-        }
-      })
-    
-    // Versione 5: aggiunto campo price_per_gram ai Product
-    this.version(5)
-      .stores({
-        productTypes: '++id, name, color',
-        products: 'id, tipo_id, strain, active',
-        warehouses: '++id, name, owner',
-        portfolios: '++id, name, owner',
-        transactionTypes: '++id, name',
-        transactions: '++id, type_id, date, product_id, from_warehouse_id, to_warehouse_id',
-        stock: '++id, product_id, warehouse_id',
-        customers: '++id, name',
-        stockMovements: '++id, transaction_id, product_id, warehouse_id, date'
-      })
-      .upgrade(async (_tx) => {
-        // Migrazione: i prodotti esistenti avranno price_per_gram undefined (opzionale)
-        // Nessuna modifica necessaria
-      })
-    
-    // Versione 6: aggiunto campi referral ai Customer
-    this.version(6)
-      .stores({
-        productTypes: '++id, name, color',
-        products: 'id, tipo_id, strain, active',
-        warehouses: '++id, name, owner',
-        portfolios: '++id, name, owner',
-        transactionTypes: '++id, name',
-        transactions: '++id, type_id, date, product_id, from_warehouse_id, to_warehouse_id',
-        stock: '++id, product_id, warehouse_id',
-        customers: '++id, name, is_referral, referred_by',
-        stockMovements: '++id, transaction_id, product_id, warehouse_id, date'
-      })
-      .upgrade(async (_tx) => {
-        // Migrazione: i clienti esistenti avranno is_referral, referral_color e referred_by undefined (opzionali)
-        // Nessuna modifica necessaria
-      })
-    
-    // Versione 7: aggiunto Entity, modificato Warehouse e Portfolio per usare entity_id
-    this.version(7)
-      .stores({
-        productTypes: '++id, name, color',
-        products: 'id, tipo_id, strain, active',
-        entities: '++id, name',
-        warehouses: '++id, name, entity_id',
-        portfolios: '++id, name, entity_id',
-        transactionTypes: '++id, name',
-        transactions: '++id, type_id, date, product_id, from_warehouse_id, to_warehouse_id',
-        stock: '++id, product_id, warehouse_id',
-        customers: '++id, name, is_referral, referred_by',
-        stockMovements: '++id, transaction_id, product_id, warehouse_id, date'
-      })
-      .upgrade(async (tx) => {
-        // Migrazione: converti owner in entità (solo se ci sono dati esistenti)
-        // Non crea entità predefinite - l'utente le creerà manualmente
-        
-        const entityMap = new Map<string, number>()
-        
-        // 1. Migra warehouses: crea entità solo per owner esistenti nei warehouses
-        const warehouses = await tx.table('warehouses').toArray()
-        const uniqueOwners = new Set<string>()
-        
-        for (const warehouse of warehouses) {
-          const owner = (warehouse as any).owner
-          if (owner && typeof owner === 'string') {
-            uniqueOwners.add(owner)
-          }
-        }
-        
-        // Crea entità solo per gli owner trovati nei warehouses esistenti
-        for (const owner of uniqueOwners) {
-          if (!entityMap.has(owner)) {
-            const entityId = await tx.table('entities').add({ 
-              name: owner, 
-              description: `Entità ${owner}` 
-            })
-            entityMap.set(owner, entityId as number)
-          }
-        }
-        
-        // Aggiorna warehouses con entity_id
-        for (const warehouse of warehouses) {
-          const owner = (warehouse as any).owner
-          if (owner && entityMap.has(owner)) {
-            await tx.table('warehouses').update(warehouse.id!, { 
-              entity_id: entityMap.get(owner)!,
-            } as any)
-          }
-        }
-        
-        // 2. Migra portfolios: crea entità solo per owner esistenti nei portfolios
-        const portfolios = await tx.table('portfolios').toArray()
-        
-        for (const portfolio of portfolios) {
-          const owner = (portfolio as any).owner
-          if (owner && typeof owner === 'string' && !entityMap.has(owner)) {
-            const entityId = await tx.table('entities').add({ 
-              name: owner, 
-              description: `Entità ${owner}` 
-            })
-            entityMap.set(owner, entityId as number)
-          }
-        }
-        
-        // Aggiorna portfolios con entity_id
-        for (const portfolio of portfolios) {
-          const owner = (portfolio as any).owner
-          if (owner && entityMap.has(owner)) {
-            await tx.table('portfolios').update(portfolio.id!, { 
-              entity_id: entityMap.get(owner)!,
-            } as any)
-          }
-        }
-      })
   }
-}
-
-// Funzione per generare ID prodotto unico (P + 3 numeri)
-export async function generateProductId(): Promise<string> {
-  let attempts = 0
-  const maxAttempts = 100
-  
-  while (attempts < maxAttempts) {
-    const randomNum = Math.floor(Math.random() * 1000)
-    const id = `P${randomNum.toString().padStart(3, '0')}`
-    
-    const exists = await db.products.get(id)
-    if (!exists) {
-      return id
-    }
-    
-    attempts++
-  }
-  
-  throw new Error('Impossibile generare ID prodotto unico')
 }
 
 export const db = new MagazzDatabase()
-
-// Funzione per forzare l'aggiornamento del database preservando i dati
-export async function forceDatabaseUpgrade(): Promise<{ preserved: number; lost: number }> {
-  try {
-    // Salva i dati che vogliamo preservare
-    const productTypes = await db.productTypes.toArray().catch(() => [])
-    const entities = await db.entities.toArray().catch(() => [])
-    const warehouses = await db.warehouses.toArray().catch(() => [])
-    const portfolios = await db.portfolios.toArray().catch(() => [])
-    const transactionTypes = await db.transactionTypes.toArray().catch(() => [])
-    const customers = await db.customers.toArray().catch(() => [])
-    
-    // Conta quanti prodotti verranno persi (schema incompatibile)
-    const products = await db.products.toArray().catch(() => [])
-    const lostCount = products.length
-    
-    // Chiudiamo il database corrente
-    await db.close()
-    
-    // Eliminiamo il database esistente
-    await indexedDB.deleteDatabase('MagazzDatabase')
-    
-    // Riapriamo il database (verrà creata la versione più recente)
-    await db.open()
-    
-    // Ripristina i dati preservati, aggiungendo color ai ProductType se mancante
-    if (productTypes.length > 0) {
-      const productTypesToAdd = productTypes.map(type => ({
-        ...type,
-        color: type.color || 'blue' as ProductTypeColor
-      }))
-      await db.productTypes.bulkAdd(productTypesToAdd)
-    }
-    
-    // Nota: i prodotti non vengono preservati perché lo schema è incompatibile
-    if (entities.length > 0) {
-      await db.entities.bulkAdd(entities)
-    }
-    if (warehouses.length > 0) {
-      await db.warehouses.bulkAdd(warehouses)
-    }
-    if (portfolios.length > 0) {
-      await db.portfolios.bulkAdd(portfolios)
-    }
-    if (transactionTypes.length > 0) {
-      await db.transactionTypes.bulkAdd(transactionTypes)
-    }
-    if (customers.length > 0) {
-      await db.customers.bulkAdd(customers)
-    }
-    
-    const preservedCount = productTypes.length + entities.length + warehouses.length + portfolios.length + 
-                          transactionTypes.length + customers.length
-    
-    return {
-      preserved: preservedCount,
-      lost: lostCount
-    }
-  } catch (error) {
-    console.error('Error upgrading database:', error)
-    throw error
-  }
-}
-

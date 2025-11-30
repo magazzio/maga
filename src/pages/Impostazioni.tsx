@@ -1,18 +1,6 @@
-import { useState, useMemo, useEffect } from 'react'
-import { motion } from 'framer-motion'
-import { Plus, Pencil, Trash2, Search, Warehouse as WarehouseIcon } from 'lucide-react'
+import { useState, useEffect, Fragment } from 'react'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
-import { Switch } from '@/components/ui/switch'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select-product-type'
 import {
   Dialog,
   DialogContent,
@@ -22,1044 +10,231 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
-import {
-  useProductTypes,
-  useCreateProductType,
-  useUpdateProductType,
-  useDeleteProductType,
-} from '@/hooks/useProductTypes'
-import {
-  useClients,
-  useUpdateClient,
-} from '@/hooks/useClients'
-import {
-  useEntities,
-  useCreateEntity,
-  useUpdateEntity,
-  useDeleteEntity,
-} from '@/hooks/useEntities'
-import {
-  useTransactionTypes,
-  useCreateTransactionType,
-  useUpdateTransactionType,
-  useDeleteTransactionType,
-} from '@/hooks/useTransactionTypes'
-import { ProductType, ProductTypeColor, PRODUCT_TYPE_COLORS, Customer, ReferralColor, REFERRAL_COLORS, Entity, TransactionType, db } from '@/db'
-import { useToast } from '@/hooks/use-toast'
-import { resetEntitiesAndWarehouses } from '@/db/reset'
-
-type SettingsSection = 'tipi-prodotto' | 'tipi-movimento' | 'entita' | 'referral'
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select-product-type'
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
+import { Plus, Pencil, Trash2, Building2, Warehouse as WarehouseIcon, Wallet, ArrowLeftRight, Package, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, ArrowRight, Info } from 'lucide-react'
+import { useEntities, useCreateEntity, useUpdateEntity, useDeleteEntity } from '@/hooks/useEntities'
+import { useWarehouses, useCreateWarehouse, useUpdateWarehouse, useDeleteWarehouse } from '@/hooks/useWarehouses'
+import { usePortfolios, useCreatePortfolio, useUpdatePortfolio, useDeletePortfolio } from '@/hooks/usePortfolios'
+import { useTransactionTypes, useCreateTransactionType, useUpdateTransactionType, useDeleteTransactionType } from '@/hooks/useTransactionTypes'
+import { useProductTypes, useCreateProductType, useUpdateProductType, useDeleteProductType } from '@/hooks/useProductTypes'
+import { useStockByWarehouse } from '@/hooks/useStock'
+import { usePortfolioBalance } from '@/hooks/usePortfolioBalance'
+import { Entity, Warehouse, Portfolio, TransactionType, ProductType, PRODUCT_TYPE_COLORS, ProductTypeColor } from '@/db'
 
 export default function Impostazioni() {
-  const [activeSection, setActiveSection] = useState<SettingsSection>('tipi-prodotto')
-  const [isDialogOpen, setIsDialogOpen] = useState(false)
-  const [editingType, setEditingType] = useState<ProductType | null>(null)
-  const [formData, setFormData] = useState<Omit<ProductType, 'id'>>({
-    name: '',
-    color: 'blue',
-  })
-
-  const { data: productTypes, isLoading, error } = useProductTypes()
-  const createMutation = useCreateProductType()
-  const updateMutation = useUpdateProductType()
-  const deleteMutation = useDeleteProductType()
-  const { toast } = useToast()
-  
-  const [confirmDeleteDialog, setConfirmDeleteDialog] = useState<{ open: boolean; typeId: number | null }>({ open: false, typeId: null })
-
-  const handleOpenDialog = (productType?: ProductType) => {
-    if (productType) {
-      setEditingType(productType)
-      setFormData({
-        name: productType.name || '',
-        color: productType.color || 'blue',
-      })
-    } else {
-      setEditingType(null)
-      setFormData({
-        name: '',
-        color: 'blue',
-      })
-    }
-    setIsDialogOpen(true)
-  }
-
-  const handleCloseDialog = () => {
-    setIsDialogOpen(false)
-    setEditingType(null)
-    setFormData({
-      name: '',
-      color: 'blue',
-    })
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    
-    if (!formData.name.trim()) {
-      toast({
-        title: 'Errore di validazione',
-        description: 'Il nome del tipo è obbligatorio',
-        variant: 'destructive',
-      })
-      return
-    }
-    
-    // Controlla duplicati (nome deve essere unico)
-    const trimmedName = formData.name.trim()
-    const existingType = productTypes?.find(
-      t => t.name.toLowerCase() === trimmedName.toLowerCase() && 
-      (!editingType || t.id !== editingType.id)
-    )
-    if (existingType) {
-      toast({
-        title: 'Errore di validazione',
-        description: 'Esiste già un tipo prodotto con questo nome',
-        variant: 'destructive',
-      })
-      return
-    }
-    
-    try {
-      if (editingType && editingType.id) {
-        await updateMutation.mutateAsync({
-          ...editingType,
-          ...formData,
-        })
-        toast({
-          title: 'Tipo prodotto aggiornato',
-          description: 'Le modifiche sono state salvate con successo',
-          variant: 'success',
-        })
-      } else {
-        await createMutation.mutateAsync(formData)
-        toast({
-          title: 'Tipo prodotto creato',
-          description: 'Il nuovo tipo prodotto è stato aggiunto con successo',
-          variant: 'success',
-        })
-      }
-      handleCloseDialog()
-    } catch (error) {
-      console.error('Error saving product type:', error)
-      const errorMessage = error instanceof Error ? error.message : 'Errore sconosciuto'
-      toast({
-        title: 'Errore',
-        description: `Errore nel salvataggio del tipo prodotto: ${errorMessage}`,
-        variant: 'destructive',
-      })
-    }
-  }
-
-  const handleDelete = (id: number) => {
-    setConfirmDeleteDialog({ open: true, typeId: id })
-  }
-
-  const performDelete = async () => {
-    if (!confirmDeleteDialog.typeId) return
-    
-    try {
-      await deleteMutation.mutateAsync(confirmDeleteDialog.typeId)
-      toast({
-        title: 'Tipo prodotto eliminato',
-        description: 'Il tipo prodotto è stato eliminato con successo',
-        variant: 'success',
-      })
-      setConfirmDeleteDialog({ open: false, typeId: null })
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Errore nell\'eliminazione del tipo prodotto'
-      toast({
-        title: 'Impossibile eliminare',
-        description: errorMessage,
-        variant: 'destructive',
-      })
-    }
-  }
-
-  const getColorInfo = (color: ProductTypeColor) => {
-    return PRODUCT_TYPE_COLORS[color] || PRODUCT_TYPE_COLORS.blue
-  }
-
-  const sections: Array<{ id: SettingsSection; label: string; description: string }> = [
-    { id: 'tipi-prodotto', label: 'Tipi Prodotto', description: 'Gestisci i tipi di prodotto' },
-    { id: 'tipi-movimento', label: 'Tipi Movimento', description: 'Gestisci i tipi di movimento personalizzabili' },
-    { id: 'entita', label: 'Entità', description: 'Gestisci le entità (magazzino e portafoglio creati automaticamente)' },
-    { id: 'referral', label: 'Referral', description: 'Gestisci i referral' },
-  ]
+  const [activeTab, setActiveTab] = useState('entities')
 
   return (
     <div className="space-y-6">
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
-      >
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-3xl font-bold tracking-tight">Impostazioni</h2>
-            <p className="text-muted-foreground mt-2">
-              Gestisci le configurazioni e le personalizzazioni
-            </p>
-          </div>
-        </div>
-      </motion.div>
-
-      <div className="flex flex-col lg:flex-row gap-6">
-        {/* Sidebar */}
-        <div className="w-full lg:w-64 flex-shrink-0">
-          <nav className="space-y-1 bg-card border rounded-lg p-2">
-            {sections.map((section) => {
-              const isActive = activeSection === section.id
-              return (
-                <button
-                  key={section.id}
-                  onClick={() => setActiveSection(section.id)}
-                  className={`
-                    w-full text-left px-4 py-3 rounded-lg transition-all duration-200
-                    ${isActive 
-                      ? 'bg-primary text-primary-foreground shadow-sm' 
-                      : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-                    }
-                  `}
-                >
-                  <div className="font-medium text-sm">{section.label}</div>
-                  <div className={`text-xs mt-0.5 ${isActive ? 'text-primary-foreground/80' : 'text-muted-foreground'}`}>
-                    {section.description}
-                  </div>
-                </button>
-              )
-            })}
-          </nav>
-        </div>
-
-        {/* Contenuto Principale */}
-        <div className="flex-1 min-w-0">
-          {activeSection === 'tipi-prodotto' && (
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>Tipi Prodotto</CardTitle>
-                  <CardDescription>
-                    Gestisci i tipi di prodotto personalizzabili
-                  </CardDescription>
-                </div>
-                <Button onClick={() => handleOpenDialog()}>
-                  <Plus className="mr-2 h-4 w-4" />
-                  Nuovo Tipo
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {isLoading ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  Caricamento...
-                </div>
-              ) : error ? (
-                <div className="text-center py-8 text-destructive">
-                  Errore nel caricamento dei tipi prodotto
-                </div>
-              ) : !productTypes || productTypes.length === 0 ? (
-                <div className="text-center py-12 text-muted-foreground">
-                  <p className="mb-2">Nessun tipo prodotto</p>
-                  <p className="text-sm mb-4">Crea il primo tipo per iniziare</p>
-                  <Button onClick={() => handleOpenDialog()} variant="outline">
-                    <Plus className="mr-2 h-4 w-4" />
-                    Crea primo tipo prodotto
-                  </Button>
-                </div>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {productTypes.map((type) => {
-                    const colorInfo = getColorInfo(type.color)
-                    return (
-                      <button
-                        key={type.id}
-                        type="button"
-                        onClick={() => handleOpenDialog(type)}
-                        className={`inline-flex items-center rounded-full px-3 py-1.5 text-sm font-medium transition-all hover:scale-105 hover:shadow-md cursor-pointer ${colorInfo.bg} ${colorInfo.text}`}
-                      >
-                        {type.name}
-                      </button>
-                    )
-                  })}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-          )}
-
-          {activeSection === 'tipi-movimento' && (
-            <TransactionTypeSection />
-          )}
-
-          {activeSection === 'entita' && (
-            <EntitySection />
-          )}
-
-          {activeSection === 'referral' && (
-            <ReferralSection />
-          )}
-        </div>
+      <div>
+        <h2 className="text-3xl font-bold tracking-tight">Impostazioni</h2>
+        <p className="text-muted-foreground">
+          Gestisci entità, magazzini, portafogli, tipi movimento e tipi prodotto.
+        </p>
       </div>
 
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="sm:max-w-[500px]">
-          <form onSubmit={handleSubmit}>
-            <DialogHeader>
-              <DialogTitle>
-                {editingType ? 'Modifica Tipo Prodotto' : 'Nuovo Tipo Prodotto'}
-              </DialogTitle>
-              <DialogDescription>
-                {editingType
-                  ? 'Modifica le informazioni del tipo prodotto'
-                  : 'Crea un nuovo tipo prodotto che potrai assegnare ai tuoi prodotti'}
-              </DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid gap-2">
-                <Label htmlFor="name">Nome *</Label>
-                <Input
-                  id="name"
-                  value={formData.name}
-                  onChange={(e) =>
-                    setFormData({ ...formData, name: e.target.value })
-                  }
-                  required
-                  placeholder="Es. Fiore, Hash, Olio..."
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="color">Colore *</Label>
-                <div className="grid grid-cols-5 gap-2">
-                  {(Object.keys(PRODUCT_TYPE_COLORS) as ProductTypeColor[]).map((color) => {
-                    const colorInfo = PRODUCT_TYPE_COLORS[color]
-                    const isSelected = formData.color === color
-                    return (
-                      <button
-                        key={color}
-                        type="button"
-                        onClick={() => setFormData({ ...formData, color })}
-                        className={`
-                          relative h-12 rounded-md border-2 transition-all
-                          ${isSelected ? 'border-primary ring-2 ring-primary ring-offset-2' : 'border-border hover:border-primary/50'}
-                          ${colorInfo.bg} ${colorInfo.text}
-                          flex items-center justify-center font-medium text-sm
-                        `}
-                        title={colorInfo.label}
-                      >
-                        {isSelected && (
-                          <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-primary flex items-center justify-center">
-                            <span className="text-[10px] text-primary-foreground">✓</span>
-                          </span>
-                        )}
-                        {colorInfo.label}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            </div>
-            <DialogFooter>
-              <div className="flex items-center justify-between w-full">
-                {editingType && editingType.id ? (
-                  <Button
-                    type="button"
-                    variant="destructive"
-                    onClick={() => {
-                      if (editingType.id) {
-                        handleCloseDialog()
-                        handleDelete(editingType.id)
-                      }
-                    }}
-                    disabled={deleteMutation.isPending}
-                  >
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    Elimina
-                  </Button>
-                ) : (
-                  <div />
-                )}
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={handleCloseDialog}
-                  >
-                    Annulla
-                  </Button>
-                  <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>
-                    {editingType ? 'Salva Modifiche' : 'Crea Tipo'}
-                  </Button>
-                </div>
-              </div>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+          <TabsTrigger value="entities">
+            <Building2 className="h-4 w-4 mr-2" />
+            Entità
+          </TabsTrigger>
+          <TabsTrigger value="warehouses">
+            <WarehouseIcon className="h-4 w-4 mr-2" />
+            Magazzini
+          </TabsTrigger>
+          <TabsTrigger value="portfolios">
+            <Wallet className="h-4 w-4 mr-2" />
+            Portafogli
+          </TabsTrigger>
+          <TabsTrigger value="transaction-types">
+            <ArrowLeftRight className="h-4 w-4 mr-2" />
+            Tipi Movimento
+          </TabsTrigger>
+          <TabsTrigger value="product-types">
+            <Package className="h-4 w-4 mr-2" />
+            Tipi Prodotto
+          </TabsTrigger>
+        </TabsList>
 
-      {/* AlertDialog per conferma eliminazione */}
-      <AlertDialog open={confirmDeleteDialog.open} onOpenChange={(open) => setConfirmDeleteDialog({ open, typeId: null })}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Elimina tipo prodotto</AlertDialogTitle>
-            <AlertDialogDescription>
-              Sei sicuro di voler eliminare questo tipo prodotto? I prodotti associati potrebbero essere influenzati. Questa azione non può essere annullata.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Annulla</AlertDialogCancel>
-            <AlertDialogAction onClick={performDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Elimina
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        {activeTab === 'entities' && (
+          <TabsContent value="entities" className="space-y-4">
+            <EntitiesTab />
+          </TabsContent>
+        )}
+
+        {activeTab === 'warehouses' && (
+          <TabsContent value="warehouses" className="space-y-4">
+            <WarehousesTab />
+          </TabsContent>
+        )}
+
+        {activeTab === 'portfolios' && (
+          <TabsContent value="portfolios" className="space-y-4">
+            <PortfoliosTab />
+          </TabsContent>
+        )}
+
+        {activeTab === 'transaction-types' && (
+          <TabsContent value="transaction-types" className="space-y-4">
+            <TransactionTypesTab />
+          </TabsContent>
+        )}
+
+        {activeTab === 'product-types' && (
+          <TabsContent value="product-types" className="space-y-4">
+            <ProductTypesTab />
+          </TabsContent>
+        )}
+      </Tabs>
     </div>
   )
 }
 
-// Componente per la sezione Referral
-function ReferralSection() {
-  const [isDialogOpen, setIsDialogOpen] = useState(false)
-  const [editingReferral, setEditingReferral] = useState<Customer | null>(null)
-  const [selectedClientId, setSelectedClientId] = useState<number | 'new'>('new')
-  const [referralColor, setReferralColor] = useState<ReferralColor>('cyan')
-  const [clientSearchValue, setClientSearchValue] = useState('')
-  const [isClientComboboxOpen, setIsClientComboboxOpen] = useState(false)
-  const [availableClients, setAvailableClients] = useState<Customer[]>([])
-
-  const { data: clientsData } = useClients(1, 1000, true) // Carica tutti i clienti per i referral esistenti
-  const referrals = clientsData?.clients?.filter(c => c.is_referral === true) || []
-  const updateMutation = useUpdateClient()
-  const { toast } = useToast()
-  
-  const [confirmRemoveDialog, setConfirmRemoveDialog] = useState<{ open: boolean; referralId: number | null }>({ open: false, referralId: null })
-
-  // Carica clienti disponibili all'apertura del dialog
-  useEffect(() => {
-    if (isDialogOpen && !editingReferral) {
-      const loadClients = async () => {
-        try {
-          const allClients = await db.customers.toArray()
-          const filtered = allClients.filter(c => c.is_referral !== true)
-          setAvailableClients(filtered)
-        } catch (error) {
-          console.error('Error loading clients:', error)
-          setAvailableClients([])
-        }
-      }
-      loadClients()
-    }
-  }, [isDialogOpen, editingReferral])
-
-  // Filtra clienti in base al testo inserito
-  const filteredClients = useMemo(() => {
-    if (!clientSearchValue.trim()) {
-      return availableClients.slice(0, 50)
-    }
-    const search = clientSearchValue.toLowerCase()
-    return availableClients.filter(
-      (client: Customer) =>
-        client.name.toLowerCase().includes(search) ||
-        (client.notes && client.notes.toLowerCase().includes(search))
-    ).slice(0, 100)
-  }, [availableClients, clientSearchValue])
-
-  const handleOpenDialog = (referral?: Customer) => {
-    if (referral) {
-      setEditingReferral(referral)
-      setSelectedClientId(referral.id || 'new')
-      setReferralColor(referral.referral_color || 'cyan')
-      setClientSearchValue(referral.name || '')
-    } else {
-      setEditingReferral(null)
-      setSelectedClientId('new')
-      setReferralColor('cyan')
-      setClientSearchValue('')
-    }
-    setIsClientComboboxOpen(false)
-    setIsDialogOpen(true)
-  }
-
-  const handleCloseDialog = () => {
-    setIsDialogOpen(false)
-    setEditingReferral(null)
-    setSelectedClientId('new')
-    setReferralColor('cyan')
-    setClientSearchValue('')
-    setIsClientComboboxOpen(false)
-  }
-
-  const handleSelectClient = (client: Customer) => {
-    setSelectedClientId(client.id || 'new')
-    setClientSearchValue(client.name)
-    setIsClientComboboxOpen(false)
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    
-    if (selectedClientId === 'new') {
-      toast({
-        title: 'Errore di validazione',
-        description: 'Seleziona un cliente esistente',
-        variant: 'destructive',
-      })
-      return
-    }
-    
-    const selectedClient = clientsData?.clients?.find(c => c.id === selectedClientId)
-    if (!selectedClient) {
-      toast({
-        title: 'Errore',
-        description: 'Cliente non trovato',
-        variant: 'destructive',
-      })
-      return
-    }
-    
-    try {
-      await updateMutation.mutateAsync({
-        ...selectedClient,
-        is_referral: true,
-        referral_color: referralColor,
-      })
-      toast({
-        title: editingReferral ? 'Referral aggiornato' : 'Referral creato',
-        description: editingReferral 
-          ? 'Il colore del referral è stato aggiornato con successo'
-          : 'Il cliente è stato marcato come referral con successo',
-        variant: 'success',
-      })
-      handleCloseDialog()
-    } catch (error) {
-      console.error('Error saving referral:', error)
-      const errorMessage = error instanceof Error ? error.message : 'Errore sconosciuto'
-      toast({
-        title: 'Errore',
-        description: `Errore nel salvataggio del referral: ${errorMessage}`,
-        variant: 'destructive',
-      })
-    }
-  }
-
-  const handleRemoveReferral = (id: number) => {
-    setConfirmRemoveDialog({ open: true, referralId: id })
-  }
-
-  const performRemoveReferral = async () => {
-    if (!confirmRemoveDialog.referralId) return
-    
-    const referral = clientsData?.clients?.find(c => c.id === confirmRemoveDialog.referralId)
-    if (!referral) return
-    
-    try {
-      await updateMutation.mutateAsync({
-        ...referral,
-        is_referral: false,
-        referral_color: undefined,
-      })
-      toast({
-        title: 'Status referral rimosso',
-        description: 'Il cliente non è più un referral',
-        variant: 'success',
-      })
-      setConfirmRemoveDialog({ open: false, referralId: null })
-    } catch (error) {
-      console.error('Error removing referral status:', error)
-      toast({
-        title: 'Errore',
-        description: 'Errore nella rimozione dello status referral',
-        variant: 'destructive',
-      })
-    }
-  }
-
-  const getColorInfo = (color?: ReferralColor) => {
-    if (!color) return REFERRAL_COLORS.cyan
-    return REFERRAL_COLORS[color] || REFERRAL_COLORS.cyan
-  }
-
-  return (
-    <>
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>Referral</CardTitle>
-              <CardDescription>
-                Seleziona clienti esistenti e marcali come referral. I referral possono referenziare altri clienti.
-              </CardDescription>
-            </div>
-            <Button onClick={() => handleOpenDialog()}>
-              <Plus className="mr-2 h-4 w-4" />
-              Aggiungi Referral
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {referrals.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <p className="mb-2">Nessun referral</p>
-              <p className="text-sm">
-                Seleziona un cliente esistente e marcalo come referral
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {referrals.map((referral) => {
-                const colorInfo = getColorInfo(referral.referral_color)
-                return (
-                  <div
-                    key={referral.id}
-                    className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent transition-colors"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className={`inline-flex items-center rounded-full px-3 py-1.5 text-sm font-medium ${colorInfo.bg} ${colorInfo.text}`}>
-                        {referral.name}
-                      </span>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleOpenDialog(referral)}
-                        aria-label={`Modifica referral ${referral.name}`}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => referral.id && handleRemoveReferral(referral.id)}
-                        className="text-destructive hover:text-destructive"
-                        aria-label={`Rimuovi status referral ${referral.name}`}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="sm:max-w-[500px]">
-          <form onSubmit={handleSubmit}>
-            <DialogHeader>
-              <DialogTitle>
-                {editingReferral ? 'Modifica Referral' : 'Aggiungi Referral'}
-              </DialogTitle>
-              <DialogDescription>
-                {editingReferral
-                  ? 'Modifica il colore del referral'
-                  : 'Seleziona un cliente esistente e marcalo come referral'}
-              </DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid gap-2">
-                <Label htmlFor="referral-client">Cliente *</Label>
-                {editingReferral ? (
-                  <>
-                    <Input
-                      id="referral-client"
-                      value={editingReferral.name}
-                      disabled
-                      className="font-medium"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Il cliente non può essere modificato. Vai in Clienti per modificare le informazioni.
-                    </p>
-                  </>
-                ) : (
-                  <div className="relative">
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none z-10" />
-                      <Input
-                        id="referral-client"
-                        value={clientSearchValue}
-                        onChange={(e) => {
-                          setClientSearchValue(e.target.value)
-                          setIsClientComboboxOpen(true)
-                          if (selectedClientId !== 'new') {
-                            setSelectedClientId('new')
-                          }
-                        }}
-                        onFocus={() => setIsClientComboboxOpen(true)}
-                        onBlur={(e) => {
-                          // Delay per permettere il click sul dropdown
-                          setTimeout(() => {
-                            if (!e.currentTarget.contains(document.activeElement)) {
-                              setIsClientComboboxOpen(false)
-                            }
-                          }, 200)
-                        }}
-                        placeholder="Cerca e seleziona un cliente..."
-                        className="pl-10"
-                        autoComplete="off"
-                      />
-                    </div>
-                    {isClientComboboxOpen && (
-                      <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-lg max-h-[300px] overflow-auto">
-                        {filteredClients.length > 0 ? (
-                          <div className="p-1">
-                            {filteredClients.map((client) => (
-                              <button
-                                key={client.id}
-                                type="button"
-                                onMouseDown={(e) => {
-                                  e.preventDefault() // Previene il blur dell'input
-                                  handleSelectClient(client)
-                                }}
-                                className="w-full text-left px-3 py-2 rounded-sm hover:bg-accent hover:text-accent-foreground transition-colors cursor-pointer"
-                              >
-                                <div className="font-medium">{client.name}</div>
-                                {client.notes && (
-                                  <div className="text-sm text-muted-foreground truncate">
-                                    {client.notes}
-                                  </div>
-                                )}
-                              </button>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="p-4 text-sm text-muted-foreground text-center">
-                            {clientSearchValue.trim() ? 'Nessun cliente trovato' : 'Inizia a digitare per cercare...'}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="referral-color">Colore Referral *</Label>
-                <div className="grid grid-cols-5 gap-2">
-                  {(Object.keys(REFERRAL_COLORS) as ReferralColor[]).map((color) => {
-                    const colorInfo = REFERRAL_COLORS[color]
-                    const isSelected = referralColor === color
-                    return (
-                      <button
-                        key={color}
-                        type="button"
-                        onClick={() => setReferralColor(color)}
-                        className={`
-                          relative h-12 rounded-md border-2 transition-all
-                          ${isSelected ? 'border-primary ring-2 ring-primary ring-offset-2' : 'border-border hover:border-primary/50'}
-                          ${colorInfo.bg} ${colorInfo.text}
-                          flex items-center justify-center font-medium text-sm
-                        `}
-                        title={colorInfo.label}
-                      >
-                        {isSelected && (
-                          <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-primary flex items-center justify-center">
-                            <span className="text-[10px] text-primary-foreground">✓</span>
-                          </span>
-                        )}
-                        {colorInfo.label}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            </div>
-            <DialogFooter>
-              <div className="flex items-center justify-between w-full">
-                {editingReferral && editingReferral.id ? (
-                  <Button
-                    type="button"
-                    variant="destructive"
-                    onClick={() => {
-                      if (editingReferral.id) {
-                        handleCloseDialog()
-                        handleRemoveReferral(editingReferral.id)
-                      }
-                    }}
-                    disabled={updateMutation.isPending}
-                  >
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    Rimuovi Status
-                  </Button>
-                ) : (
-                  <div />
-                )}
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={handleCloseDialog}
-                  >
-                    Annulla
-                  </Button>
-                  <Button type="submit" disabled={updateMutation.isPending || selectedClientId === 'new'}>
-                    {editingReferral ? 'Salva Modifiche' : 'Aggiungi Referral'}
-                  </Button>
-                </div>
-              </div>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      <AlertDialog open={confirmRemoveDialog.open} onOpenChange={(open) => setConfirmRemoveDialog({ open, referralId: null })}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Rimuovi status referral</AlertDialogTitle>
-            <AlertDialogDescription>
-              Sei sicuro di voler rimuovere lo status referral da questo cliente? Il cliente non verrà eliminato, ma non potrà più referenziare altri clienti. I clienti già referenziati non verranno modificati.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Annulla</AlertDialogCancel>
-            <AlertDialogAction onClick={performRemoveReferral} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Rimuovi
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-    </>
-  )
-}
-
-// Componente per la sezione Entità
-function EntitySection() {
-  const [isDialogOpen, setIsDialogOpen] = useState(false)
-  const [editingEntity, setEditingEntity] = useState<Entity | null>(null)
-  const [formData, setFormData] = useState({
-    name: '',
-    description: '',
-  })
-  const [formErrors, setFormErrors] = useState<{ name?: string }>({})
-  const [confirmDeleteDialog, setConfirmDeleteDialog] = useState<{ open: boolean; entityId: number | null }>({ open: false, entityId: null })
-
+// Tab Entità
+function EntitiesTab() {
   const { data: entities, isLoading } = useEntities()
   const createMutation = useCreateEntity()
   const updateMutation = useUpdateEntity()
   const deleteMutation = useDeleteEntity()
-  const { toast } = useToast()
-  const [resetDialog, setResetDialog] = useState(false)
+  
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [editingEntity, setEditingEntity] = useState<Entity | null>(null)
+  const [deleteId, setDeleteId] = useState<number | null>(null)
+  const [formData, setFormData] = useState({ name: '', description: '' })
 
   const handleOpenDialog = (entity?: Entity) => {
     if (entity) {
       setEditingEntity(entity)
-      setFormData({
-        name: entity.name,
-        description: entity.description || '',
-      })
+      setFormData({ name: entity.name, description: entity.description || '' })
     } else {
       setEditingEntity(null)
-      setFormData({
-        name: '',
-        description: '',
-      })
+      setFormData({ name: '', description: '' })
     }
-    setFormErrors({})
-    setIsDialogOpen(true)
+    setDialogOpen(true)
   }
 
   const handleCloseDialog = () => {
-    setIsDialogOpen(false)
+    setDialogOpen(false)
     setEditingEntity(null)
-    setFormData({
-      name: '',
-      description: '',
-    })
-    setFormErrors({})
+    setFormData({ name: '', description: '' })
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    
-    if (!formData.name.trim()) {
-      setFormErrors({ name: 'Il nome dell\'entità è obbligatorio' })
-      toast({
-        title: 'Errore di validazione',
-        description: 'Il nome dell\'entità è obbligatorio',
-        variant: 'destructive',
-      })
-      return
+    if (editingEntity?.id) {
+      updateMutation.mutate({ ...editingEntity, ...formData })
+    } else {
+      createMutation.mutate(formData)
     }
-    
-    // Controlla duplicati (nome deve essere unico)
-    const trimmedName = formData.name.trim()
-    const existingEntity = entities?.find(
-      e => e.name.toLowerCase() === trimmedName.toLowerCase() && 
-      (!editingEntity || e.id !== editingEntity.id)
-    )
-    if (existingEntity) {
-      setFormErrors({ name: 'Esiste già un\'entità con questo nome' })
-      toast({
-        title: 'Errore di validazione',
-        description: 'Esiste già un\'entità con questo nome',
-        variant: 'destructive',
-      })
-      return
-    }
-    
-    try {
-      if (editingEntity?.id) {
-        await updateMutation.mutateAsync({
-          ...editingEntity,
-          ...formData,
-        })
-        toast({
-          title: 'Entità aggiornata',
-          description: 'Le modifiche sono state salvate con successo. Magazzino e portafoglio associati sono stati aggiornati.',
-          variant: 'success',
-        })
-      } else {
-        await createMutation.mutateAsync(formData)
-        toast({
-          title: 'Entità creata',
-          description: 'L\'entità è stata creata con successo. Magazzino e portafoglio associati sono stati creati automaticamente.',
-          variant: 'success',
-        })
-      }
-      handleCloseDialog()
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Errore sconosciuto'
-      toast({
-        title: 'Errore',
-        description: `Errore nel salvataggio dell'entità: ${errorMessage}`,
-        variant: 'destructive',
-      })
-    }
+    handleCloseDialog()
   }
 
   const handleDelete = (id: number) => {
-    setConfirmDeleteDialog({ open: true, entityId: id })
+    deleteMutation.mutate(id)
+    setDeleteId(null)
   }
 
-  const performDelete = async () => {
-    if (!confirmDeleteDialog.entityId) return
-    
-    try {
-      await deleteMutation.mutateAsync(confirmDeleteDialog.entityId)
-      toast({
-        title: 'Entità eliminata',
-        description: 'L\'entità è stata eliminata con successo. Magazzino e portafoglio associati sono stati eliminati.',
-        variant: 'success',
-      })
-      setConfirmDeleteDialog({ open: false, entityId: null })
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Errore nell\'eliminazione dell\'entità'
-      toast({
-        title: 'Impossibile eliminare',
-        description: errorMessage,
-        variant: 'destructive',
-      })
-    }
-  }
-
-  const handleReset = async () => {
-    try {
-      await resetEntitiesAndWarehouses()
-      toast({
-        title: 'Reset completato',
-        description: 'Tutte le entità, magazzini e portafogli sono stati eliminati.',
-        variant: 'success',
-      })
-      setResetDialog(false)
-      // Invalida le query per aggiornare la lista
-      window.location.reload() // Ricarica per aggiornare tutto
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Errore nel reset'
-      toast({
-        title: 'Errore',
-        description: errorMessage,
-        variant: 'destructive',
-      })
-    }
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="text-center space-y-2">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+          <p className="text-sm text-muted-foreground">Caricamento...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle>Entità</CardTitle>
-            <CardDescription>
-              Gestisci le entità. Ogni entità crea automaticamente un magazzino e un portafoglio associati.
-            </CardDescription>
-          </div>
-          <div className="flex gap-2">
-            {entities && entities.length > 0 && (
-              <Button 
-                variant="destructive" 
-                onClick={() => setResetDialog(true)}
-                aria-label="Elimina tutte le entità"
-              >
-                <Trash2 className="mr-2 h-4 w-4" />
-                Elimina Tutte
-              </Button>
+    <>
+      <div className="flex justify-between items-center">
+        <h3 className="text-lg font-semibold">Entità</h3>
+        <Button onClick={() => handleOpenDialog()} aria-label="Crea nuova entità">
+          <Plus className="h-4 w-4 mr-2" aria-hidden="true" />
+          Nuova Entità
+        </Button>
+      </div>
+
+      {/* Tabella Desktop */}
+      <div className="hidden md:block rounded-md border overflow-x-auto">
+        <Table className="w-full">
+          <TableHeader>
+            <TableRow>
+              <TableHead className="align-middle w-[30%]">Nome</TableHead>
+              <TableHead className="align-middle w-[calc(70%-120px)]">Descrizione</TableHead>
+              <TableHead className="text-center w-[120px] align-middle">Azioni</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {entities && entities.length > 0 ? (
+              entities.map((entity) => (
+                <TableRow key={entity.id}>
+                  <TableCell className="font-medium align-middle w-[30%]">{entity.name}</TableCell>
+                  <TableCell className="align-middle w-[calc(70%-120px)]">{entity.description || '-'}</TableCell>
+                  <TableCell className="text-center align-middle w-[120px]">
+                    <div className="flex justify-center gap-2">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleOpenDialog(entity)}
+                        aria-label={`Modifica entità ${entity.name}`}
+                      >
+                        <Pencil className="h-4 w-4" />
+                        <span className="sr-only">Modifica</span>
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setDeleteId(entity.id!)}
+                        aria-label={`Elimina entità ${entity.name}`}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                        <span className="sr-only">Elimina</span>
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))
+            ) : (
+              <TableRow>
+                <TableCell colSpan={3} className="text-center text-muted-foreground py-8">
+                  Nessuna entità. Crea la prima entità.
+                </TableCell>
+              </TableRow>
             )}
-            <Button onClick={() => handleOpenDialog()} aria-label="Crea nuova entità">
-              <Plus className="mr-2 h-4 w-4" />
-              Nuova Entità
-            </Button>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent>
-        {isLoading ? (
-          <div className="text-center py-8 text-muted-foreground">
-            Caricamento...
-          </div>
-        ) : !entities || entities.length === 0 ? (
-          <div className="text-center py-12 text-muted-foreground">
-            <p className="mb-2">Nessuna entità</p>
-            <p className="text-sm mb-4">Crea la prima entità per iniziare</p>
-            <Button onClick={() => handleOpenDialog()} variant="outline">
-              <Plus className="mr-2 h-4 w-4" />
-              Crea prima entità
-            </Button>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {entities.map((entity) => (
-              <div
-                key={entity.id}
-                className="flex items-center justify-between p-3 rounded-lg border hover:bg-accent transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                    <WarehouseIcon className="h-5 w-5 text-primary" />
-                  </div>
-                  <div>
-                    <div className="font-medium">{entity.name}</div>
-                    <div className="text-sm text-muted-foreground">
-                      {entity.description || 'Nessuna descrizione'}
-                    </div>
-                    <div className="text-xs text-muted-foreground mt-1">
-                      Include: Magazzino {entity.name} • Portafoglio {entity.name}
-                    </div>
-                  </div>
+          </TableBody>
+        </Table>
+      </div>
+
+      {/* Card View Mobile */}
+      <div className="md:hidden space-y-4">
+        {entities && entities.length > 0 ? (
+          entities.map((entity) => (
+            <div key={entity.id} className="border rounded-lg p-4 space-y-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="font-medium">{entity.name}</h4>
+                  {entity.description && (
+                    <p className="text-sm text-muted-foreground mt-1">{entity.description}</p>
+                  )}
                 </div>
                 <div className="flex gap-2">
                   <Button
                     variant="ghost"
-                    size="icon"
+                    size="sm"
                     onClick={() => handleOpenDialog(entity)}
                     aria-label={`Modifica entità ${entity.name}`}
                   >
@@ -1067,56 +242,52 @@ function EntitySection() {
                   </Button>
                   <Button
                     variant="ghost"
-                    size="icon"
-                    onClick={() => entity.id && handleDelete(entity.id)}
-                    className="text-destructive hover:text-destructive"
+                    size="sm"
+                    onClick={() => setDeleteId(entity.id!)}
                     aria-label={`Elimina entità ${entity.name}`}
                   >
-                    <Trash2 className="h-4 w-4" />
+                    <Trash2 className="h-4 w-4 text-destructive" />
                   </Button>
                 </div>
               </div>
-            ))}
+            </div>
+          ))
+        ) : (
+          <div className="text-center text-muted-foreground py-8">
+            Nessuna entità. Crea la prima entità.
           </div>
         )}
-      </CardContent>
+      </div>
 
-      {/* Dialog per creare/modificare entità */}
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent>
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="w-[95vw] sm:w-full max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              {editingEntity ? 'Modifica Entità' : 'Nuova Entità'}
+            </DialogTitle>
+            <DialogDescription>
+              {editingEntity
+                ? 'Modifica i dettagli dell\'entità.'
+                : 'Crea una nuova entità (es. Driplug, Meetdrip).'}
+            </DialogDescription>
+          </DialogHeader>
           <form onSubmit={handleSubmit}>
-            <DialogHeader>
-              <DialogTitle>
-                {editingEntity ? 'Modifica Entità' : 'Nuova Entità'}
-              </DialogTitle>
-              <DialogDescription>
-                {editingEntity
-                  ? 'Modifica le informazioni dell\'entità. Il magazzino e il portafoglio associati verranno aggiornati automaticamente.'
-                  : 'Inserisci le informazioni per la nuova entità. Verranno creati automaticamente un magazzino e un portafoglio associati.'}
-              </DialogDescription>
-            </DialogHeader>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label htmlFor="entity-name">Nome *</Label>
+                <Label htmlFor="name">Nome *</Label>
                 <Input
-                  id="entity-name"
+                  id="name"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="Es. Driplug, Meetdrip"
-                  aria-invalid={!!formErrors.name}
+                  required
                 />
-                {formErrors.name && (
-                  <p className="text-sm text-destructive">{formErrors.name}</p>
-                )}
               </div>
               <div className="space-y-2">
-                <Label htmlFor="entity-description">Descrizione</Label>
+                <Label htmlFor="description">Descrizione</Label>
                 <Textarea
-                  id="entity-description"
+                  id="description"
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder="Note aggiuntive (opzionale)"
-                  rows={3}
                 />
               </div>
             </div>
@@ -1124,272 +295,1119 @@ function EntitySection() {
               <Button type="button" variant="outline" onClick={handleCloseDialog}>
                 Annulla
               </Button>
-              <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>
-                {editingEntity ? 'Salva Modifiche' : 'Crea Entità'}
-              </Button>
+              <Button type="submit">Salva</Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
 
-      {/* AlertDialog per conferma eliminazione */}
-      <AlertDialog
-        open={confirmDeleteDialog.open}
-        onOpenChange={(open) => setConfirmDeleteDialog({ open, entityId: null })}
-      >
+      <AlertDialog open={deleteId !== null} onOpenChange={(open) => !open && setDeleteId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Elimina entità</AlertDialogTitle>
+            <AlertDialogTitle>Elimina Entità</AlertDialogTitle>
             <AlertDialogDescription>
-              Sei sicuro di voler eliminare questa entità? Verranno eliminati anche il magazzino e il portafoglio associati. Questa azione non può essere annullata.
+              Sei sicuro di voler eliminare questa entità? Questa azione non può essere annullata.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Annulla</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={performDelete}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
+            <AlertDialogAction onClick={() => deleteId && handleDelete(deleteId)}>
               Elimina
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    </>
+  )
+}
 
-      {/* AlertDialog per reset completo */}
-      <AlertDialog
-        open={resetDialog}
-        onOpenChange={setResetDialog}
-      >
+// Componente Riga Magazzino (per calcolare stock)
+function WarehouseRow({ warehouse, entity, onEdit, onDelete }: { warehouse: Warehouse; entity?: Entity; onEdit: () => void; onDelete: () => void }) {
+  const { data: stock = 0, isLoading: isLoadingStock } = useStockByWarehouse(warehouse.id)
+
+  return (
+    <TableRow>
+      <TableCell className="font-medium align-middle w-[20%]">{warehouse.name}</TableCell>
+      <TableCell className="align-middle w-[18%]">{entity?.name || '-'}</TableCell>
+      <TableCell className="text-center align-middle w-[12%]">
+        {isLoadingStock ? (
+          <span className="text-muted-foreground text-sm">...</span>
+        ) : (
+          <span className="font-medium">{stock.toFixed(2)}g</span>
+        )}
+      </TableCell>
+      <TableCell className="align-middle w-[calc(50%-120px)]">{warehouse.description || '-'}</TableCell>
+      <TableCell className="text-center align-middle w-[120px]">
+        <div className="flex justify-center gap-2">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onEdit}
+            aria-label={`Modifica magazzino ${warehouse.name}`}
+          >
+            <Pencil className="h-4 w-4" />
+            <span className="sr-only">Modifica</span>
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onDelete}
+            aria-label={`Elimina magazzino ${warehouse.name}`}
+          >
+            <Trash2 className="h-4 w-4 text-destructive" />
+            <span className="sr-only">Elimina</span>
+          </Button>
+        </div>
+      </TableCell>
+    </TableRow>
+  )
+}
+
+// Componente Card Magazzino Mobile
+function WarehouseCard({ warehouse, entity, onEdit, onDelete }: { warehouse: Warehouse; entity?: Entity; onEdit: () => void; onDelete: () => void }) {
+  const { data: stock = 0, isLoading: isLoadingStock } = useStockByWarehouse(warehouse.id)
+
+  return (
+    <div className="border rounded-lg p-4 space-y-2">
+      <div className="flex items-center justify-between">
+        <div>
+          <h4 className="font-medium">{warehouse.name}</h4>
+          <p className="text-sm text-muted-foreground mt-1">
+            <span className="font-medium">Entità:</span> {entity?.name || '-'}
+          </p>
+          <p className="text-sm mt-1">
+            <span className="font-medium">Stock:</span>{' '}
+            {isLoadingStock ? (
+              <span className="text-muted-foreground">...</span>
+            ) : (
+              <span className="font-medium">{stock.toFixed(2)}g</span>
+            )}
+          </p>
+          {warehouse.description && (
+            <p className="text-sm text-muted-foreground mt-1">{warehouse.description}</p>
+          )}
+        </div>
+        <div className="flex gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onEdit}
+            aria-label={`Modifica magazzino ${warehouse.name}`}
+          >
+            <Pencil className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onDelete}
+            aria-label={`Elimina magazzino ${warehouse.name}`}
+          >
+            <Trash2 className="h-4 w-4 text-destructive" />
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Tab Magazzini
+function WarehousesTab() {
+  const { data: warehouses, isLoading } = useWarehouses()
+  const { data: entities } = useEntities()
+  const createMutation = useCreateWarehouse()
+  const updateMutation = useUpdateWarehouse()
+  const deleteMutation = useDeleteWarehouse()
+  
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [editingWarehouse, setEditingWarehouse] = useState<Warehouse | null>(null)
+  const [deleteId, setDeleteId] = useState<number | null>(null)
+  const [formData, setFormData] = useState({ name: '', description: '', entity_id: 0 })
+
+  const handleOpenDialog = (warehouse?: Warehouse) => {
+    if (warehouse) {
+      setEditingWarehouse(warehouse)
+      setFormData({ name: warehouse.name, description: warehouse.description || '', entity_id: warehouse.entity_id })
+    } else {
+      setEditingWarehouse(null)
+      setFormData({ name: '', description: '', entity_id: entities?.[0]?.id || 0 })
+    }
+    setDialogOpen(true)
+  }
+
+  const handleCloseDialog = () => {
+    setDialogOpen(false)
+    setEditingWarehouse(null)
+    setFormData({ name: '', description: '', entity_id: entities?.[0]?.id || 0 })
+  }
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (editingWarehouse?.id) {
+      updateMutation.mutate({ ...editingWarehouse, ...formData, entity_id: formData.entity_id })
+    } else {
+      createMutation.mutate({ ...formData, entity_id: formData.entity_id })
+    }
+    handleCloseDialog()
+  }
+
+  const handleDelete = (id: number) => {
+    deleteMutation.mutate(id)
+    setDeleteId(null)
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="text-center space-y-2">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+          <p className="text-sm text-muted-foreground">Caricamento...</p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <>
+      <div className="flex justify-between items-center">
+        <h3 className="text-lg font-semibold">Magazzini</h3>
+        <Button onClick={() => handleOpenDialog()} disabled={!entities || entities.length === 0} aria-label="Crea nuovo magazzino">
+          <Plus className="h-4 w-4 mr-2" aria-hidden="true" />
+          Nuovo Magazzino
+        </Button>
+      </div>
+
+      {(!entities || entities.length === 0) && (
+        <div className="rounded-md border p-4 bg-muted/50">
+          <p className="text-sm text-muted-foreground">
+            Crea prima almeno un'entità per poter creare magazzini.
+          </p>
+        </div>
+      )}
+
+      {/* Tabella Desktop */}
+      <div className="hidden md:block rounded-md border overflow-x-auto">
+        <Table className="w-full">
+          <TableHeader>
+            <TableRow>
+              <TableHead className="align-middle w-[20%]">Nome</TableHead>
+              <TableHead className="align-middle w-[18%]">Entità</TableHead>
+              <TableHead className="text-center align-middle w-[12%]">Stock</TableHead>
+              <TableHead className="align-middle w-[calc(50%-120px)]">Descrizione</TableHead>
+              <TableHead className="text-center w-[120px] align-middle">Azioni</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {warehouses && warehouses.length > 0 ? (
+              warehouses.map((warehouse) => {
+                const entity = entities?.find((e) => e.id === warehouse.entity_id)
+                return (
+                  <WarehouseRow key={warehouse.id} warehouse={warehouse} entity={entity} onEdit={() => handleOpenDialog(warehouse)} onDelete={() => setDeleteId(warehouse.id!)} />
+                )
+              })
+            ) : (
+              <TableRow>
+                <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                  Nessun magazzino. Crea il primo magazzino.
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
+
+      {/* Card View Mobile */}
+      <div className="md:hidden space-y-4">
+        {warehouses && warehouses.length > 0 ? (
+          warehouses.map((warehouse) => {
+            const entity = entities?.find((e) => e.id === warehouse.entity_id)
+            return (
+              <WarehouseCard key={warehouse.id} warehouse={warehouse} entity={entity} onEdit={() => handleOpenDialog(warehouse)} onDelete={() => setDeleteId(warehouse.id!)} />
+            )
+          })
+        ) : (
+          <div className="text-center text-muted-foreground py-8">
+            Nessun magazzino. Crea il primo magazzino.
+          </div>
+        )}
+      </div>
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="w-[95vw] sm:w-full max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              {editingWarehouse ? 'Modifica Magazzino' : 'Nuovo Magazzino'}
+            </DialogTitle>
+            <DialogDescription>
+              {editingWarehouse
+                ? 'Modifica i dettagli del magazzino.'
+                : 'Crea un nuovo magazzino collegato a un\'entità.'}
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSubmit}>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="warehouse-name">Nome *</Label>
+                <Input
+                  id="warehouse-name"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="warehouse-entity">Entità *</Label>
+                <Select
+                  value={formData.entity_id.toString()}
+                  onValueChange={(value) => setFormData({ ...formData, entity_id: parseInt(value) })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleziona entità" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {entities?.map((entity) => (
+                      <SelectItem key={entity.id} value={entity.id!.toString()}>
+                        {entity.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="warehouse-description">Descrizione</Label>
+                <Textarea
+                  id="warehouse-description"
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={handleCloseDialog}>
+                Annulla
+              </Button>
+              <Button type="submit">Salva</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={deleteId !== null} onOpenChange={(open) => !open && setDeleteId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Elimina tutte le entità</AlertDialogTitle>
+            <AlertDialogTitle>Elimina Magazzino</AlertDialogTitle>
             <AlertDialogDescription>
-              Sei sicuro di voler eliminare TUTTE le entità? Verranno eliminate anche tutti i magazzini e portafogli associati. 
-              Questa azione non può essere annullata e ti permetterà di partire da zero.
+              Sei sicuro di voler eliminare questo magazzino? Questa azione non può essere annullata.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Annulla</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleReset}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              Elimina Tutto
+            <AlertDialogAction onClick={() => deleteId && handleDelete(deleteId)}>
+              Elimina
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    </>
+  )
+}
+
+// Componente Riga Portafoglio (per calcolare saldi)
+function PortfolioRow({ portfolio, entity, onEdit, onDelete }: { portfolio: Portfolio; entity?: Entity; onEdit: () => void; onDelete: () => void }) {
+  const { data: balance, isLoading: isLoadingBalance } = usePortfolioBalance(portfolio.id)
+
+  return (
+    <TableRow>
+      <TableCell className="font-medium align-middle w-[20%]">{portfolio.name}</TableCell>
+      <TableCell className="align-middle w-[18%]">{entity?.name || '-'}</TableCell>
+      <TableCell className="text-center align-middle w-[12%]">
+        {isLoadingBalance ? (
+          <span className="text-muted-foreground text-sm">...</span>
+        ) : (
+          <div className="flex flex-col gap-0.5">
+            <span className="font-medium">{balance?.balance.toFixed(2) || '0.00'}€</span>
+            {balance && balance.debt_balance !== 0 && (
+              <span className="text-xs text-amber-600">Debiti: {balance.debt_balance.toFixed(2)}€</span>
+            )}
+          </div>
+        )}
+      </TableCell>
+      <TableCell className="align-middle w-[calc(50%-120px)]">{portfolio.description || '-'}</TableCell>
+      <TableCell className="text-center align-middle w-[120px]">
+        <div className="flex justify-center gap-2">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onEdit}
+            aria-label={`Modifica portafoglio ${portfolio.name}`}
+          >
+            <Pencil className="h-4 w-4" />
+            <span className="sr-only">Modifica</span>
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onDelete}
+            aria-label={`Elimina portafoglio ${portfolio.name}`}
+          >
+            <Trash2 className="h-4 w-4 text-destructive" />
+            <span className="sr-only">Elimina</span>
+          </Button>
+        </div>
+      </TableCell>
+    </TableRow>
+  )
+}
+
+// Componente Card Portafoglio Mobile
+function PortfolioCard({ portfolio, entity, onEdit, onDelete }: { portfolio: Portfolio; entity?: Entity; onEdit: () => void; onDelete: () => void }) {
+  const { data: balance, isLoading: isLoadingBalance } = usePortfolioBalance(portfolio.id)
+
+  return (
+    <div className="border rounded-lg p-4 space-y-2">
+      <div className="flex items-center justify-between">
+        <div>
+          <h4 className="font-medium">{portfolio.name}</h4>
+          <p className="text-sm text-muted-foreground mt-1">
+            <span className="font-medium">Entità:</span> {entity?.name || '-'}
+          </p>
+          <p className="text-sm mt-1">
+            <span className="font-medium">Saldo:</span>{' '}
+            {isLoadingBalance ? (
+              <span className="text-muted-foreground">...</span>
+            ) : (
+              <>
+                <span className="font-medium">{balance?.balance.toFixed(2) || '0.00'}€</span>
+                {balance && balance.cash_balance !== balance.balance && (
+                  <span className="text-muted-foreground ml-1">(Cash: {balance.cash_balance.toFixed(2)}€)</span>
+                )}
+                {balance && balance.debt_balance !== 0 && (
+                  <span className="text-amber-600 ml-1">| Debiti: {balance.debt_balance.toFixed(2)}€</span>
+                )}
+              </>
+            )}
+          </p>
+          {portfolio.description && (
+            <p className="text-sm text-muted-foreground mt-1">{portfolio.description}</p>
+          )}
+        </div>
+        <div className="flex gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onEdit}
+            aria-label={`Modifica portafoglio ${portfolio.name}`}
+          >
+            <Pencil className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onDelete}
+            aria-label={`Elimina portafoglio ${portfolio.name}`}
+          >
+            <Trash2 className="h-4 w-4 text-destructive" />
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Tab Portafogli
+function PortfoliosTab() {
+  const { data: portfolios, isLoading } = usePortfolios()
+  const { data: entities } = useEntities()
+  const createMutation = useCreatePortfolio()
+  const updateMutation = useUpdatePortfolio()
+  const deleteMutation = useDeletePortfolio()
+  
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [editingPortfolio, setEditingPortfolio] = useState<Portfolio | null>(null)
+  const [deleteId, setDeleteId] = useState<number | null>(null)
+  const [formData, setFormData] = useState({ name: '', description: '', entity_id: 0 })
+
+  const handleOpenDialog = (portfolio?: Portfolio) => {
+    if (portfolio) {
+      setEditingPortfolio(portfolio)
+      setFormData({ name: portfolio.name, description: portfolio.description || '', entity_id: portfolio.entity_id })
+    } else {
+      setEditingPortfolio(null)
+      setFormData({ name: '', description: '', entity_id: entities?.[0]?.id || 0 })
+    }
+    setDialogOpen(true)
+  }
+
+  const handleCloseDialog = () => {
+    setDialogOpen(false)
+    setEditingPortfolio(null)
+    setFormData({ name: '', description: '', entity_id: entities?.[0]?.id || 0 })
+  }
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (editingPortfolio?.id) {
+      updateMutation.mutate({ ...editingPortfolio, ...formData, entity_id: formData.entity_id })
+    } else {
+      createMutation.mutate({ ...formData, entity_id: formData.entity_id })
+    }
+    handleCloseDialog()
+  }
+
+  const handleDelete = (id: number) => {
+    deleteMutation.mutate(id)
+    setDeleteId(null)
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="text-center space-y-2">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+          <p className="text-sm text-muted-foreground">Caricamento...</p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <>
+      <div className="flex justify-between items-center">
+        <h3 className="text-lg font-semibold">Portafogli</h3>
+        <Button onClick={() => handleOpenDialog()} disabled={!entities || entities.length === 0} aria-label="Crea nuovo portafoglio">
+          <Plus className="h-4 w-4 mr-2" aria-hidden="true" />
+          Nuovo Portafoglio
+        </Button>
+      </div>
+
+      {(!entities || entities.length === 0) && (
+        <div className="rounded-md border p-4 bg-muted/50">
+          <p className="text-sm text-muted-foreground">
+            Crea prima almeno un'entità per poter creare portafogli.
+          </p>
+        </div>
+      )}
+
+      {/* Tabella Desktop */}
+      <div className="hidden md:block rounded-md border overflow-x-auto">
+        <Table className="w-full">
+          <TableHeader>
+            <TableRow>
+              <TableHead className="align-middle w-[20%]">Nome</TableHead>
+              <TableHead className="align-middle w-[18%]">Entità</TableHead>
+              <TableHead className="text-center align-middle w-[12%]">Saldo</TableHead>
+              <TableHead className="align-middle w-[calc(50%-120px)]">Descrizione</TableHead>
+              <TableHead className="text-center w-[120px] align-middle">Azioni</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {portfolios && portfolios.length > 0 ? (
+              portfolios.map((portfolio) => {
+                const entity = entities?.find((e) => e.id === portfolio.entity_id)
+                return (
+                  <PortfolioRow key={portfolio.id} portfolio={portfolio} entity={entity} onEdit={() => handleOpenDialog(portfolio)} onDelete={() => setDeleteId(portfolio.id!)} />
+                )
+              })
+            ) : (
+              <TableRow>
+                <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                  Nessun portafoglio. Crea il primo portafoglio.
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
+
+      {/* Card View Mobile */}
+      <div className="md:hidden space-y-4">
+        {portfolios && portfolios.length > 0 ? (
+          portfolios.map((portfolio) => {
+            const entity = entities?.find((e) => e.id === portfolio.entity_id)
+            return (
+              <PortfolioCard key={portfolio.id} portfolio={portfolio} entity={entity} onEdit={() => handleOpenDialog(portfolio)} onDelete={() => setDeleteId(portfolio.id!)} />
+            )
+          })
+        ) : (
+          <div className="text-center text-muted-foreground py-8">
+            Nessun portafoglio. Crea il primo portafoglio.
+          </div>
+        )}
+      </div>
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="w-[95vw] sm:w-full max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              {editingPortfolio ? 'Modifica Portafoglio' : 'Nuovo Portafoglio'}
+            </DialogTitle>
+            <DialogDescription>
+              {editingPortfolio
+                ? 'Modifica i dettagli del portafoglio.'
+                : 'Crea un nuovo portafoglio collegato a un\'entità.'}
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSubmit}>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="portfolio-name">Nome *</Label>
+                <Input
+                  id="portfolio-name"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="portfolio-entity">Entità *</Label>
+                <Select
+                  value={formData.entity_id.toString()}
+                  onValueChange={(value) => setFormData({ ...formData, entity_id: parseInt(value) })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleziona entità" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {entities?.map((entity) => (
+                      <SelectItem key={entity.id} value={entity.id!.toString()}>
+                        {entity.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="portfolio-description">Descrizione</Label>
+                <Textarea
+                  id="portfolio-description"
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={handleCloseDialog}>
+                Annulla
+              </Button>
+              <Button type="submit">Salva</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={deleteId !== null} onOpenChange={(open) => !open && setDeleteId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Elimina Portafoglio</AlertDialogTitle>
+            <AlertDialogDescription>
+              Sei sicuro di voler eliminare questo portafoglio? Questa azione non può essere annullata.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annulla</AlertDialogCancel>
+            <AlertDialogAction onClick={() => deleteId && handleDelete(deleteId)}>
+              Elimina
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  )
+}
+
+// Helper per calcolare impatto su entità
+type ImpactType = 'up' | 'down' | 'none'
+
+function getWarehouseImpact(
+  type: TransactionType,
+  entityId: number,
+  warehouses: Warehouse[]
+): ImpactType {
+  if (!type.affects_warehouse) return 'none'
+
+  const fromWarehouse = warehouses.find(w => w.id === type.suggested_from_warehouse_id)
+  const toWarehouse = warehouses.find(w => w.id === type.suggested_to_warehouse_id)
+
+  // Calcola la direzione automaticamente se non è presente
+  let direction = type.warehouse_direction
+  if (!direction) {
+    if (fromWarehouse && toWarehouse) direction = 'transfer'
+    else if (fromWarehouse) direction = 'out'
+    else if (toWarehouse) direction = 'in'
+    else return 'none'
+  }
+
+  if (direction === 'in') {
+    // Entrata: aumenta se to_warehouse appartiene all'entità
+    if (toWarehouse?.entity_id === entityId) return 'up'
+  } else if (direction === 'out') {
+    // Uscita: diminuisce se from_warehouse appartiene all'entità
+    if (fromWarehouse?.entity_id === entityId) return 'down'
+  } else if (direction === 'transfer') {
+    // Trasferimento: diminuisce se from appartiene, aumenta se to appartiene
+    if (fromWarehouse?.entity_id === entityId && toWarehouse?.entity_id === entityId) {
+      // Stesso magazzino (trasformazione interna): nessun impatto sulla quantità
+      return 'none'
+    }
+    if (fromWarehouse?.entity_id === entityId) return 'down'
+    if (toWarehouse?.entity_id === entityId) return 'up'
+  }
+
+  return 'none'
+}
+
+function getPortfolioImpact(
+  type: TransactionType,
+  entityId: number,
+  portfolios: Portfolio[]
+): ImpactType {
+  if (!type.affects_portfolio) return 'none'
+
+  const fromPortfolio = portfolios.find(p => p.id === type.suggested_from_portfolio_id)
+  const toPortfolio = portfolios.find(p => p.id === type.suggested_to_portfolio_id)
+
+  // Calcola la direzione automaticamente se non è presente
+  let direction = type.portfolio_direction
+  if (!direction) {
+    if (fromPortfolio && toPortfolio) direction = 'transfer'
+    else if (fromPortfolio) direction = 'out'
+    else if (toPortfolio) direction = 'in'
+    else return 'none'
+  }
+
+  if (direction === 'in') {
+    // Entrata: aumenta se to_portfolio appartiene all'entità
+    if (toPortfolio?.entity_id === entityId) return 'up'
+  } else if (direction === 'out') {
+    // Uscita: diminuisce se from_portfolio appartiene all'entità
+    if (fromPortfolio?.entity_id === entityId) return 'down'
+  } else if (direction === 'transfer') {
+    // Trasferimento: diminuisce se from appartiene, aumenta se to appartiene
+    if (fromPortfolio?.entity_id === entityId) return 'down'
+    if (toPortfolio?.entity_id === entityId) return 'up'
+  }
+
+  return 'none'
+}
+
+// Componente per renderizzare indicatore impatto
+function ImpactIndicator({ impact }: { impact: ImpactType }) {
+  if (impact === 'up') {
+    return (
+      <div className="flex justify-center items-center">
+        <ArrowUp className="h-4 w-4 text-green-600" aria-label="Aumenta" />
+      </div>
+    )
+  } else if (impact === 'down') {
+    return (
+      <div className="flex justify-center items-center">
+        <ArrowDown className="h-4 w-4 text-red-600" aria-label="Diminuisce" />
+      </div>
+    )
+  }
+  return (
+    <div className="flex justify-center items-center text-muted-foreground">
+      <span>-</span>
+    </div>
+  )
+}
+
+// Componente Riepilogo Configurazione Tipo Movimento
+function TransactionTypeSummary({ 
+  formData, 
+  warehouses, 
+  portfolios 
+}: { 
+  formData: Partial<TransactionType>
+  warehouses?: Warehouse[]
+  portfolios?: Portfolio[]
+}) {
+  const getWarehouseName = (id?: number) => {
+    if (!id) return 'Nessuno'
+    return warehouses?.find(w => w.id === id)?.name || 'Nessuno'
+  }
+
+  const getPortfolioName = (id?: number) => {
+    if (!id) return 'Nessuno'
+    return portfolios?.find(p => p.id === id)?.name || 'Nessuno'
+  }
+
+  // Calcola la direzione automaticamente in base a cosa è selezionato
+  const calculateDirection = (fromId?: number, toId?: number): 'in' | 'out' | 'transfer' | undefined => {
+    if (fromId && toId) return 'transfer'
+    if (fromId && !toId) return 'out'
+    if (!fromId && toId) return 'in'
+    return undefined
+  }
+
+  const getDirectionLabel = (fromId?: number, toId?: number) => {
+    const direction = calculateDirection(fromId, toId)
+    if (!direction) return 'Non configurato'
+    const labels: Record<string, string> = {
+      'in': 'Entrata',
+      'out': 'Uscita',
+      'transfer': 'Trasferimento'
+    }
+    return labels[direction] || direction
+  }
+
+  const getDirectionIcon = (fromId?: number, toId?: number) => {
+    const direction = calculateDirection(fromId, toId)
+    if (direction === 'in') return <ArrowDown className="h-4 w-4 text-green-600" />
+    if (direction === 'out') return <ArrowUp className="h-4 w-4 text-red-600" />
+    if (direction === 'transfer') return <ArrowLeftRight className="h-4 w-4 text-blue-600" />
+    return null
+  }
+
+  const getPaymentTypeLabel = (type?: string) => {
+    if (!type) return 'Non selezionato'
+    return type === 'monthly' ? 'Mensile' : 'Istantaneo'
+  }
+
+  if (!formData.affects_warehouse && !formData.affects_portfolio) {
+    return (
+      <Card className="bg-muted/50">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Info className="h-4 w-4" />
+            Riepilogo Configurazione
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground">
+            Attiva almeno una sezione (Magazzino o Portafoglio) per vedere il riepilogo.
+          </p>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  return (
+    <Card className="bg-muted/50">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base flex items-center gap-2">
+          <Info className="h-4 w-4" />
+          Riepilogo Configurazione
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {formData.affects_warehouse && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 font-medium text-sm">
+              <WarehouseIcon className="h-4 w-4 text-blue-600" />
+              <span>Magazzino</span>
+            </div>
+            <div className="pl-6 space-y-1.5 text-sm">
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground">Tipo:</span>
+                <span className="font-medium">{getDirectionLabel(formData.suggested_from_warehouse_id, formData.suggested_to_warehouse_id)}</span>
+                {getDirectionIcon(formData.suggested_from_warehouse_id, formData.suggested_to_warehouse_id)}
+              </div>
+              {formData.suggested_from_warehouse_id && (
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground">Da:</span>
+                  <span className="font-medium">{getWarehouseName(formData.suggested_from_warehouse_id)}</span>
+                </div>
+              )}
+              {formData.suggested_to_warehouse_id && (
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground">A:</span>
+                  <span className="font-medium">{getWarehouseName(formData.suggested_to_warehouse_id)}</span>
+                </div>
+              )}
+              {formData.suggested_from_warehouse_id && formData.suggested_to_warehouse_id && (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <ArrowRight className="h-3 w-3" />
+                  <span>Trasferimento tra magazzini</span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {formData.affects_portfolio && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 font-medium text-sm">
+              <Wallet className="h-4 w-4 text-green-600" />
+              <span>Portafoglio</span>
+            </div>
+            <div className="pl-6 space-y-1.5 text-sm">
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground">Tipo:</span>
+                <span className="font-medium">{getDirectionLabel(formData.suggested_from_portfolio_id, formData.suggested_to_portfolio_id)}</span>
+                {getDirectionIcon(formData.suggested_from_portfolio_id, formData.suggested_to_portfolio_id)}
+              </div>
+              {formData.suggested_from_portfolio_id && (
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground">Da:</span>
+                  <span className="font-medium">{getPortfolioName(formData.suggested_from_portfolio_id)}</span>
+                </div>
+              )}
+              {formData.suggested_to_portfolio_id && (
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground">A:</span>
+                  <span className="font-medium">{getPortfolioName(formData.suggested_to_portfolio_id)}</span>
+                </div>
+              )}
+              {formData.suggested_from_portfolio_id && formData.suggested_to_portfolio_id && (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <ArrowRight className="h-3 w-3" />
+                  <span>Trasferimento tra portafogli</span>
+                </div>
+              )}
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground">Pagamento:</span>
+                <span className="font-medium">{getPaymentTypeLabel(formData.payment_type)}</span>
+              </div>
+            </div>
+          </div>
+        )}
+      </CardContent>
     </Card>
   )
 }
 
-// Componente per la sezione Tipi Movimento
-function TransactionTypeSection() {
-  const [isDialogOpen, setIsDialogOpen] = useState(false)
-  const [editingType, setEditingType] = useState<TransactionType | null>(null)
-  const [formData, setFormData] = useState<Omit<TransactionType, 'id'>>({
-    name: '',
-    description: '',
-    affects_warehouse: true,
-    affects_portfolio: true,
-    payment_type: 'monthly',
-  })
-  const [formErrors, setFormErrors] = useState<{ name?: string }>({})
-  const [confirmDeleteDialog, setConfirmDeleteDialog] = useState<{ open: boolean; typeId: number | null }>({ open: false, typeId: null })
-
+// Tab Tipi Movimento
+function TransactionTypesTab() {
   const { data: transactionTypes, isLoading } = useTransactionTypes()
+  const { data: warehouses } = useWarehouses()
+  const { data: portfolios } = usePortfolios()
+  const { data: entities } = useEntities()
   const createMutation = useCreateTransactionType()
   const updateMutation = useUpdateTransactionType()
   const deleteMutation = useDeleteTransactionType()
-  const { toast } = useToast()
+  
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [editingType, setEditingType] = useState<TransactionType | null>(null)
+  const [deleteId, setDeleteId] = useState<number | null>(null)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize] = useState(15)
+  const [formData, setFormData] = useState<Partial<TransactionType>>({
+    name: '',
+    description: '',
+    affects_warehouse: false,
+    affects_portfolio: false,
+    payment_type: undefined,
+    warehouse_direction: undefined,
+    portfolio_direction: undefined,
+    suggested_from_warehouse_id: undefined,
+    suggested_to_warehouse_id: undefined,
+    suggested_from_portfolio_id: undefined,
+    suggested_to_portfolio_id: undefined,
+    requires_product: false,
+    transforms_state: false,
+    from_state: undefined,
+    to_state: undefined,
+  })
 
   const handleOpenDialog = (type?: TransactionType) => {
     if (type) {
       setEditingType(type)
-      setFormData({
-        name: type.name,
-        description: type.description || '',
-        affects_warehouse: type.affects_warehouse,
-        affects_portfolio: type.affects_portfolio,
-        payment_type: type.payment_type || 'monthly',
-        custom_fields: type.custom_fields,
-      })
+      setFormData(type)
     } else {
       setEditingType(null)
       setFormData({
         name: '',
         description: '',
-        affects_warehouse: true,
-        affects_portfolio: true,
-        payment_type: 'monthly',
+        affects_warehouse: false,
+        affects_portfolio: false,
+        payment_type: undefined,
+        warehouse_direction: undefined,
+        portfolio_direction: undefined,
+        suggested_from_warehouse_id: undefined,
+        suggested_to_warehouse_id: undefined,
+        suggested_from_portfolio_id: undefined,
+        suggested_to_portfolio_id: undefined,
+        requires_product: false,
+        transforms_state: false,
+        from_state: undefined,
+        to_state: undefined,
       })
     }
-    setFormErrors({})
-    setIsDialogOpen(true)
+    setDialogOpen(true)
   }
 
   const handleCloseDialog = () => {
-    setIsDialogOpen(false)
+    setDialogOpen(false)
     setEditingType(null)
     setFormData({
       name: '',
       description: '',
-      affects_warehouse: true,
-      affects_portfolio: true,
-      payment_type: 'monthly',
+      affects_warehouse: false,
+      affects_portfolio: false,
+      payment_type: undefined,
+        warehouse_direction: undefined,
+        portfolio_direction: undefined,
+        suggested_from_warehouse_id: undefined,
+        suggested_to_warehouse_id: undefined,
+        suggested_from_portfolio_id: undefined,
+        suggested_to_portfolio_id: undefined,
+        requires_product: false,
     })
-    setFormErrors({})
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     
-    if (!formData.name.trim()) {
-      setFormErrors({ name: 'Il nome del tipo movimento è obbligatorio' })
-      toast({
-        title: 'Errore di validazione',
-        description: 'Il nome del tipo movimento è obbligatorio',
-        variant: 'destructive',
-      })
-      return
-    }
+    // Calcola automaticamente le direzioni se non sono già impostate
+    const finalFormData = { ...formData }
     
-    // Controlla duplicati
-    const trimmedName = formData.name.trim()
-    const existingType = transactionTypes?.find(
-      t => t.name.toLowerCase() === trimmedName.toLowerCase() && 
-      (!editingType || t.id !== editingType.id)
-    )
-    if (existingType) {
-      setFormErrors({ name: 'Esiste già un tipo movimento con questo nome' })
-      toast({
-        title: 'Errore di validazione',
-        description: 'Esiste già un tipo movimento con questo nome',
-        variant: 'destructive',
-      })
-      return
-    }
-    
-    try {
-      if (editingType?.id) {
-        await updateMutation.mutateAsync({
-          ...editingType,
-          ...formData,
-        })
-        toast({
-          title: 'Tipo movimento aggiornato',
-          description: 'Le modifiche sono state salvate con successo',
-          variant: 'success',
-        })
-      } else {
-        await createMutation.mutateAsync(formData)
-        toast({
-          title: 'Tipo movimento creato',
-          description: 'Il nuovo tipo movimento è stato aggiunto con successo',
-          variant: 'success',
-        })
+    // Calcola direzione magazzino
+    if (finalFormData.affects_warehouse) {
+      if (finalFormData.suggested_from_warehouse_id && finalFormData.suggested_to_warehouse_id) {
+        finalFormData.warehouse_direction = 'transfer'
+      } else if (finalFormData.suggested_from_warehouse_id) {
+        finalFormData.warehouse_direction = 'out'
+      } else if (finalFormData.suggested_to_warehouse_id) {
+        finalFormData.warehouse_direction = 'in'
       }
-      handleCloseDialog()
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Errore sconosciuto'
-      toast({
-        title: 'Errore',
-        description: `Errore nel salvataggio del tipo movimento: ${errorMessage}`,
-        variant: 'destructive',
-      })
     }
+    
+    // Calcola direzione portafoglio
+    if (finalFormData.affects_portfolio) {
+      if (finalFormData.suggested_from_portfolio_id && finalFormData.suggested_to_portfolio_id) {
+        finalFormData.portfolio_direction = 'transfer'
+      } else if (finalFormData.suggested_from_portfolio_id) {
+        finalFormData.portfolio_direction = 'out'
+      } else if (finalFormData.suggested_to_portfolio_id) {
+        finalFormData.portfolio_direction = 'in'
+      }
+    }
+    
+    if (editingType?.id) {
+      updateMutation.mutate({ ...editingType, ...finalFormData } as TransactionType)
+    } else {
+      createMutation.mutate(finalFormData as Omit<TransactionType, 'id'>)
+    }
+    handleCloseDialog()
   }
 
   const handleDelete = (id: number) => {
-    setConfirmDeleteDialog({ open: true, typeId: id })
+    deleteMutation.mutate(id)
+    setDeleteId(null)
   }
 
-  const performDelete = async () => {
-    if (!confirmDeleteDialog.typeId) return
-    
-    try {
-      await deleteMutation.mutateAsync(confirmDeleteDialog.typeId)
-      toast({
-        title: 'Tipo movimento eliminato',
-        description: 'Il tipo movimento è stato eliminato con successo',
-        variant: 'success',
-      })
-      setConfirmDeleteDialog({ open: false, typeId: null })
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Errore nell\'eliminazione del tipo movimento'
-      toast({
-        title: 'Impossibile eliminare',
-        description: errorMessage,
-        variant: 'destructive',
-      })
+  // Paginazione
+  const totalPages = transactionTypes ? Math.ceil(transactionTypes.length / pageSize) : 0
+  const startIndex = (currentPage - 1) * pageSize
+  const endIndex = startIndex + pageSize
+  const paginatedTypes = transactionTypes?.slice(startIndex, endIndex) || []
+
+  // Reset pagina quando cambiano i dati
+  useEffect(() => {
+    if (transactionTypes && currentPage > totalPages && totalPages > 0) {
+      setCurrentPage(totalPages)
     }
+  }, [transactionTypes, currentPage, totalPages])
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="text-center space-y-2">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+          <p className="text-sm text-muted-foreground">Caricamento...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle>Tipi Movimento</CardTitle>
-            <CardDescription>
-              Gestisci i tipi di movimento personalizzabili. Ogni tipo definisce come il movimento influisce su magazzino e portafoglio.
-            </CardDescription>
-          </div>
-          <Button onClick={() => handleOpenDialog()} aria-label="Crea nuovo tipo movimento">
-            <Plus className="mr-2 h-4 w-4" />
-            Nuovo Tipo
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent>
-        {isLoading ? (
-          <div className="text-center py-8 text-muted-foreground">
-            Caricamento...
-          </div>
-        ) : !transactionTypes || transactionTypes.length === 0 ? (
-          <div className="text-center py-12 text-muted-foreground">
-            <p className="mb-2">Nessun tipo movimento</p>
-            <p className="text-sm mb-4">Crea il primo tipo movimento per iniziare</p>
-            <Button onClick={() => handleOpenDialog()} variant="outline">
-              <Plus className="mr-2 h-4 w-4" />
-              Crea primo tipo movimento
-            </Button>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {transactionTypes.map((type) => (
-              <div
-                key={type.id}
-                className="flex items-center justify-between p-3 rounded-lg border hover:bg-accent transition-colors"
-              >
-                <div className="flex-1">
-                  <div className="font-medium">{type.name}</div>
-                  <div className="text-sm text-muted-foreground">
-                    {type.description || 'Nessuna descrizione'}
-                  </div>
-                  <div className="flex gap-2 mt-2">
-                    {type.affects_warehouse && (
-                      <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-800">
-                        Magazzino
-                      </span>
-                    )}
-                    {type.affects_portfolio && (
-                      <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-green-100 text-green-800">
-                        Portafoglio
-                      </span>
-                    )}
-                    {type.payment_type && (
-                      <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-800">
-                        {type.payment_type === 'instant' ? 'Pagamento Istantaneo' : 'Pagamento Mensile'}
-                      </span>
-                    )}
-                  </div>
-                </div>
+    <>
+      <div className="flex justify-between items-center">
+        <h3 className="text-lg font-semibold">Tipi Movimento</h3>
+        <Button onClick={() => handleOpenDialog()} aria-label="Crea nuovo tipo movimento">
+          <Plus className="h-4 w-4 mr-2" aria-hidden="true" />
+          Nuovo Tipo Movimento
+        </Button>
+      </div>
+
+      {/* Tabella Desktop */}
+      <div className="hidden md:block rounded-md border overflow-x-auto">
+        <Table className="w-full">
+          <TableHeader>
+            <TableRow>
+              <TableHead className="align-middle w-[20%]">Nome</TableHead>
+                  {entities && entities.map((entity) => (
+                <Fragment key={entity.id}>
+                  <TableHead className="text-center align-middle w-[8%]" title={`Magazzino ${entity.name}`}>
+                    <div className="flex flex-col items-center gap-1">
+                      <WarehouseIcon className="h-4 w-4" aria-hidden="true" />
+                      <span className="text-xs font-medium">{entity.name}</span>
+                    </div>
+                  </TableHead>
+                  <TableHead className="text-center align-middle w-[8%]" title={`Portafoglio ${entity.name}`}>
+                    <div className="flex flex-col items-center gap-1">
+                      <Wallet className="h-4 w-4" aria-hidden="true" />
+                      <span className="text-xs font-medium">{entity.name}</span>
+                    </div>
+                  </TableHead>
+                </Fragment>
+              ))}
+              <TableHead className="text-center align-middle" style={{ width: entities ? `calc(${100 - 20 - (entities.length * 16)}% - 120px)` : 'calc(40%-120px)' }}>Tipo Pagamento</TableHead>
+              <TableHead className="text-center w-[120px] align-middle">Azioni</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {paginatedTypes.length > 0 ? (
+              paginatedTypes.map((type: TransactionType) => (
+                <TableRow key={type.id}>
+                  <TableCell className="font-medium align-middle w-[20%]">{type.name}</TableCell>
+                  {entities && entities.map((entity) => (
+                    <Fragment key={entity.id}>
+                      <TableCell className="text-center align-middle w-[8%]">
+                        <ImpactIndicator impact={getWarehouseImpact(type, entity.id!, warehouses || [])} />
+                      </TableCell>
+                      <TableCell className="text-center align-middle w-[8%]">
+                        <ImpactIndicator impact={getPortfolioImpact(type, entity.id!, portfolios || [])} />
+                      </TableCell>
+                    </Fragment>
+                  ))}
+                  <TableCell className="text-center align-middle" style={{ width: entities ? `calc(${100 - 20 - (entities.length * 16)}% - 120px)` : 'calc(40%-120px)' }}>{type.payment_type || '-'}</TableCell>
+                  <TableCell className="text-center align-middle w-[120px]">
+                    <div className="flex justify-center gap-2">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleOpenDialog(type)}
+                        aria-label={`Modifica tipo movimento ${type.name}`}
+                      >
+                        <Pencil className="h-4 w-4" />
+                        <span className="sr-only">Modifica</span>
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setDeleteId(type.id!)}
+                        aria-label={`Elimina tipo movimento ${type.name}`}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                        <span className="sr-only">Elimina</span>
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))
+            ) : (
+              <TableRow>
+                <TableCell colSpan={entities ? (1 + entities.length * 2 + 2) : 5} className="text-center text-muted-foreground py-8">
+                  Nessun tipo movimento. Crea il primo tipo movimento.
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
+
+      {/* Card View Mobile */}
+      <div className="md:hidden space-y-4">
+        {paginatedTypes.length > 0 ? (
+          paginatedTypes.map((type) => (
+            <div key={type.id} className="border rounded-lg p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="font-medium">{type.name}</h4>
                 <div className="flex gap-2">
                   <Button
                     variant="ghost"
-                    size="icon"
+                    size="sm"
                     onClick={() => handleOpenDialog(type)}
                     aria-label={`Modifica tipo movimento ${type.name}`}
                   >
@@ -1397,91 +1415,440 @@ function TransactionTypeSection() {
                   </Button>
                   <Button
                     variant="ghost"
-                    size="icon"
-                    onClick={() => type.id && handleDelete(type.id)}
-                    className="text-destructive hover:text-destructive"
+                    size="sm"
+                    onClick={() => setDeleteId(type.id!)}
                     aria-label={`Elimina tipo movimento ${type.name}`}
                   >
-                    <Trash2 className="h-4 w-4" />
+                    <Trash2 className="h-4 w-4 text-destructive" />
                   </Button>
                 </div>
               </div>
-            ))}
+              <div className="space-y-3 text-sm">
+                {entities && entities.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="font-medium text-xs text-muted-foreground uppercase">Impatto per Entità</div>
+                    {entities.map((entity) => (
+                      <div key={entity.id} className="grid grid-cols-2 gap-2 pl-2 border-l-2 border-muted">
+                        <div className="flex items-center gap-2">
+                          <WarehouseIcon className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
+                          <span className="font-medium text-xs">{entity.name} Magazzino:</span>
+                          <ImpactIndicator impact={getWarehouseImpact(type, entity.id!, warehouses || [])} />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Wallet className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
+                          <span className="font-medium text-xs">{entity.name} Portafoglio:</span>
+                          <ImpactIndicator impact={getPortfolioImpact(type, entity.id!, portfolios || [])} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {type.payment_type && (
+                  <div>
+                    <span className="font-medium">Pagamento:</span> {type.payment_type === 'monthly' ? 'Mensile' : 'Istantaneo'}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))
+        ) : (
+          <div className="text-center text-muted-foreground py-8">
+            Nessun tipo movimento. Crea il primo tipo movimento.
           </div>
         )}
-      </CardContent>
+      </div>
 
-      {/* Dialog per creare/modificare tipo movimento */}
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="sm:max-w-[600px]">
+      {/* Paginazione - Mostra solo se ci sono più elementi della pageSize */}
+      {transactionTypes && transactionTypes.length > pageSize && (
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-2">
+          <div className="text-sm text-muted-foreground">
+            Mostrando {startIndex + 1}-{Math.min(endIndex, transactionTypes.length)} di {transactionTypes.length} tipi
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              aria-label="Pagina precedente"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <div className="flex items-center gap-1">
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                let pageNum: number
+                if (totalPages <= 5) {
+                  pageNum = i + 1
+                } else if (currentPage <= 3) {
+                  pageNum = i + 1
+                } else if (currentPage >= totalPages - 2) {
+                  pageNum = totalPages - 4 + i
+                } else {
+                  pageNum = currentPage - 2 + i
+                }
+                return (
+                  <Button
+                    key={pageNum}
+                    variant={currentPage === pageNum ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setCurrentPage(pageNum)}
+                    aria-label={`Vai alla pagina ${pageNum}`}
+                    aria-current={currentPage === pageNum ? "page" : undefined}
+                  >
+                    {pageNum}
+                  </Button>
+                )
+              })}
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              aria-label="Pagina successiva"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto w-[95vw] sm:w-full">
+          <DialogHeader>
+            <DialogTitle>
+              {editingType ? 'Modifica Tipo Movimento' : 'Nuovo Tipo Movimento'}
+            </DialogTitle>
+            <DialogDescription>
+              {editingType
+                ? 'Modifica i dettagli del tipo movimento.'
+                : 'Crea un nuovo tipo movimento personalizzabile.'}
+            </DialogDescription>
+          </DialogHeader>
           <form onSubmit={handleSubmit}>
-            <DialogHeader>
-              <DialogTitle>
-                {editingType ? 'Modifica Tipo Movimento' : 'Nuovo Tipo Movimento'}
-              </DialogTitle>
-              <DialogDescription>
-                {editingType
-                  ? 'Modifica le informazioni del tipo movimento'
-                  : 'Inserisci le informazioni per il nuovo tipo movimento'}
-              </DialogDescription>
-            </DialogHeader>
             <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="type-name">Nome *</Label>
-                <Input
-                  id="type-name"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="Es. Stock, Cura, Delivery, Meet, Ship"
-                  aria-invalid={!!formErrors.name}
-                />
-                {formErrors.name && (
-                  <p className="text-sm text-destructive">{formErrors.name}</p>
+              {/* Informazioni Base */}
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="type-name">Nome *</Label>
+                  <Input
+                    id="type-name"
+                    value={formData.name || ''}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="type-description">Descrizione</Label>
+                  <Textarea
+                    id="type-description"
+                    value={formData.description || ''}
+                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>
+                      <input
+                        type="checkbox"
+                        checked={formData.affects_warehouse || false}
+                        onChange={(e) => setFormData({ ...formData, affects_warehouse: e.target.checked })}
+                        className="mr-2"
+                      />
+                      Influisce su Magazzino
+                    </Label>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>
+                      <input
+                        type="checkbox"
+                        checked={formData.affects_portfolio || false}
+                        onChange={(e) => setFormData({ ...formData, affects_portfolio: e.target.checked })}
+                        className="mr-2"
+                      />
+                      Influisce su Portafoglio
+                    </Label>
+                  </div>
+                </div>
+              </div>
+
+              {/* Riepilogo */}
+              <TransactionTypeSummary 
+                formData={formData} 
+                warehouses={warehouses} 
+                portfolios={portfolios} 
+              />
+
+              {/* Sezioni Magazzino e Portafoglio */}
+              <div className={`grid gap-4 ${formData.affects_warehouse && formData.affects_portfolio ? 'md:grid-cols-2' : 'grid-cols-1'}`}>
+                {/* Sezione Magazzino */}
+                {formData.affects_warehouse && (
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <WarehouseIcon className="h-4 w-4 text-blue-600" />
+                        <span>Configurazione Magazzino</span>
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="text-sm text-muted-foreground bg-muted/50 p-3 rounded-md">
+                        <p className="font-medium mb-1">Come funziona:</p>
+                        <ul className="list-disc list-inside space-y-1 text-xs">
+                          <li><strong>Solo "Da":</strong> Uscita da magazzino</li>
+                          <li><strong>Solo "A":</strong> Entrata in magazzino</li>
+                          <li><strong>Entrambi:</strong> Trasferimento tra magazzini</li>
+                        </ul>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="suggested-from-warehouse">Da Magazzino (suggerito)</Label>
+                          <Select
+                            value={formData.suggested_from_warehouse_id?.toString() || undefined}
+                            onValueChange={(value: string) => {
+                              const newFromId = value === "none" ? undefined : parseInt(value)
+                              setFormData({ 
+                                ...formData, 
+                                suggested_from_warehouse_id: newFromId,
+                                // Calcola automaticamente la direzione
+                                warehouse_direction: newFromId && formData.suggested_to_warehouse_id 
+                                  ? 'transfer' 
+                                  : newFromId 
+                                    ? 'out' 
+                                    : formData.suggested_to_warehouse_id 
+                                      ? 'in' 
+                                      : undefined
+                              })
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Nessuno" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">Nessuno</SelectItem>
+                              {warehouses?.map((warehouse) => (
+                                <SelectItem key={warehouse.id} value={warehouse.id!.toString()}>
+                                  {warehouse.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="suggested-to-warehouse">A Magazzino (suggerito)</Label>
+                          <Select
+                            value={formData.suggested_to_warehouse_id?.toString() || undefined}
+                            onValueChange={(value: string) => {
+                              const newToId = value === "none" ? undefined : parseInt(value)
+                              setFormData({ 
+                                ...formData, 
+                                suggested_to_warehouse_id: newToId,
+                                // Calcola automaticamente la direzione
+                                warehouse_direction: formData.suggested_from_warehouse_id && newToId 
+                                  ? 'transfer' 
+                                  : newToId 
+                                    ? 'in' 
+                                    : formData.suggested_from_warehouse_id 
+                                      ? 'out' 
+                                      : undefined
+                              })
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Nessuno" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">Nessuno</SelectItem>
+                              {warehouses?.map((warehouse) => (
+                                <SelectItem key={warehouse.id} value={warehouse.id!.toString()}>
+                                  {warehouse.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Sezione Portafoglio */}
+                {formData.affects_portfolio && (
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <Wallet className="h-4 w-4 text-green-600" />
+                        <span>Configurazione Portafoglio</span>
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="text-sm text-muted-foreground bg-muted/50 p-3 rounded-md">
+                        <p className="font-medium mb-1">Come funziona:</p>
+                        <ul className="list-disc list-inside space-y-1 text-xs">
+                          <li><strong>Solo "Da":</strong> Uscita da portafoglio (es. pagamento)</li>
+                          <li><strong>Solo "A":</strong> Entrata in portafoglio (es. incasso)</li>
+                          <li><strong>Entrambi:</strong> Trasferimento tra portafogli (es. Ship: Driplug → Meetdrip)</li>
+                        </ul>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="suggested-from-portfolio">Da Portafoglio (suggerito)</Label>
+                          <Select
+                            value={formData.suggested_from_portfolio_id?.toString() || undefined}
+                            onValueChange={(value: string) => {
+                              const newFromId = value === "none" ? undefined : parseInt(value)
+                              setFormData({ 
+                                ...formData, 
+                                suggested_from_portfolio_id: newFromId,
+                                // Calcola automaticamente la direzione
+                                portfolio_direction: newFromId && formData.suggested_to_portfolio_id 
+                                  ? 'transfer' 
+                                  : newFromId 
+                                    ? 'out' 
+                                    : formData.suggested_to_portfolio_id 
+                                      ? 'in' 
+                                      : undefined
+                              })
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Nessuno" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">Nessuno</SelectItem>
+                              {portfolios?.map((portfolio) => (
+                                <SelectItem key={portfolio.id} value={portfolio.id!.toString()}>
+                                  {portfolio.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="suggested-to-portfolio">A Portafoglio (suggerito)</Label>
+                          <Select
+                            value={formData.suggested_to_portfolio_id?.toString() || undefined}
+                            onValueChange={(value: string) => {
+                              const newToId = value === "none" ? undefined : parseInt(value)
+                              setFormData({ 
+                                ...formData, 
+                                suggested_to_portfolio_id: newToId,
+                                // Calcola automaticamente la direzione
+                                portfolio_direction: formData.suggested_from_portfolio_id && newToId 
+                                  ? 'transfer' 
+                                  : newToId 
+                                    ? 'in' 
+                                    : formData.suggested_from_portfolio_id 
+                                      ? 'out' 
+                                      : undefined
+                              })
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Nessuno" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">Nessuno</SelectItem>
+                              {portfolios?.map((portfolio) => (
+                                <SelectItem key={portfolio.id} value={portfolio.id!.toString()}>
+                                  {portfolio.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="payment-type">Tipo Pagamento</Label>
+                        <Select
+                          value={formData.payment_type || undefined}
+                          onValueChange={(value: string) => setFormData({ ...formData, payment_type: value as 'monthly' | 'instant' })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Seleziona tipo pagamento" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="monthly">Mensile</SelectItem>
+                            <SelectItem value="instant">Istantaneo</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </CardContent>
+                  </Card>
                 )}
               </div>
               <div className="space-y-2">
-                <Label htmlFor="type-description">Descrizione</Label>
-                <Textarea
-                  id="type-description"
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder="Descrizione del tipo movimento (opzionale)"
-                  rows={3}
-                />
-              </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="flex items-center space-x-2">
-                  <Switch
-                    id="affects-warehouse"
-                    checked={formData.affects_warehouse}
-                    onCheckedChange={(checked) => setFormData({ ...formData, affects_warehouse: checked })}
+                <Label>
+                  <input
+                    type="checkbox"
+                    checked={formData.requires_product || false}
+                    onChange={(e) => setFormData({ ...formData, requires_product: e.target.checked })}
+                    className="mr-2"
                   />
-                  <Label htmlFor="affects-warehouse">Influisce su Magazzino</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Switch
-                    id="affects-portfolio"
-                    checked={formData.affects_portfolio}
-                    onCheckedChange={(checked) => setFormData({ ...formData, affects_portfolio: checked })}
-                  />
-                  <Label htmlFor="affects-portfolio">Influisce su Portafoglio</Label>
-                </div>
+                  Richiede Prodotto
+                </Label>
               </div>
-              {formData.affects_portfolio && (
-                <div className="space-y-2">
-                  <Label htmlFor="payment-type">Tipo Pagamento</Label>
-                  <Select
-                    value={formData.payment_type || 'monthly'}
-                    onValueChange={(v) => setFormData({ ...formData, payment_type: v as 'monthly' | 'instant' })}
-                  >
-                    <SelectTrigger id="payment-type" aria-label="Seleziona tipo pagamento">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="monthly">Mensile (pagato a fine mese)</SelectItem>
-                      <SelectItem value="instant">Istantaneo (pagato subito)</SelectItem>
-                    </SelectContent>
-                  </Select>
+              {/* Trasformazione di Stato */}
+              {formData.requires_product && (
+                <div className="space-y-4 p-4 border rounded-lg">
+                  <div className="space-y-2">
+                    <Label>
+                      <input
+                        type="checkbox"
+                        checked={formData.transforms_state || false}
+                        onChange={(e) => {
+                          const transforms = e.target.checked
+                          setFormData({
+                            ...formData,
+                            transforms_state: transforms,
+                            from_state: transforms ? formData.from_state : undefined,
+                            to_state: transforms ? formData.to_state : undefined,
+                          })
+                        }}
+                        className="mr-2"
+                      />
+                      Trasforma Stato Prodotto (es. Raw → Cured)
+                    </Label>
+                  </div>
+                  {formData.transforms_state && (
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="from-state">Stato Iniziale *</Label>
+                        <Select
+                          value={formData.from_state || undefined}
+                          onValueChange={(value: string) => setFormData({ ...formData, from_state: value as 'raw' | 'cured' })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Seleziona stato" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="raw">Raw</SelectItem>
+                            <SelectItem value="cured">Cured</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="to-state">Stato Finale *</Label>
+                        <Select
+                          value={formData.to_state || undefined}
+                          onValueChange={(value: string) => setFormData({ ...formData, to_state: value as 'raw' | 'cured' })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Seleziona stato" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="raw">Raw</SelectItem>
+                            <SelectItem value="cured">Cured</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  )}
+                  {formData.transforms_state && (
+                    <div className="text-sm text-muted-foreground">
+                      <p>Questo movimento trasformerà il prodotto da <strong>{formData.from_state === 'raw' ? 'Raw' : 'Cured'}</strong> a <strong>{formData.to_state === 'raw' ? 'Raw' : 'Cured'}</strong>.</p>
+                      <p className="mt-1">Per trasformazioni nello stesso magazzino, usa "Trasferimento" come direzione magazzino e seleziona lo stesso magazzino per origine e destinazione.</p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -1489,38 +1856,337 @@ function TransactionTypeSection() {
               <Button type="button" variant="outline" onClick={handleCloseDialog}>
                 Annulla
               </Button>
-              <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>
-                {editingType ? 'Salva Modifiche' : 'Crea Tipo'}
-              </Button>
+              <Button type="submit">Salva</Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
 
-      {/* AlertDialog per conferma eliminazione */}
-      <AlertDialog
-        open={confirmDeleteDialog.open}
-        onOpenChange={(open) => setConfirmDeleteDialog({ open, typeId: null })}
-      >
+      <AlertDialog open={deleteId !== null} onOpenChange={(open) => !open && setDeleteId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Elimina tipo movimento</AlertDialogTitle>
+            <AlertDialogTitle>Elimina Tipo Movimento</AlertDialogTitle>
             <AlertDialogDescription>
               Sei sicuro di voler eliminare questo tipo movimento? Questa azione non può essere annullata.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Annulla</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={performDelete}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
+            <AlertDialogAction onClick={() => deleteId && handleDelete(deleteId)}>
               Elimina
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </Card>
+    </>
   )
 }
 
+// Tab Tipi Prodotto
+function ProductTypesTab() {
+  const { data: productTypes, isLoading } = useProductTypes()
+  const createMutation = useCreateProductType()
+  const updateMutation = useUpdateProductType()
+  const deleteMutation = useDeleteProductType()
+  
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [editingType, setEditingType] = useState<ProductType | null>(null)
+  const [deleteId, setDeleteId] = useState<number | null>(null)
+  const [formData, setFormData] = useState({ name: '', color: 'blue' as ProductTypeColor })
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize] = useState(15)
+
+  const handleOpenDialog = (type?: ProductType) => {
+    if (type) {
+      setEditingType(type)
+      setFormData({ name: type.name, color: type.color })
+    } else {
+      setEditingType(null)
+      setFormData({ name: '', color: 'blue' })
+    }
+    setDialogOpen(true)
+  }
+
+  const handleCloseDialog = () => {
+    setDialogOpen(false)
+    setEditingType(null)
+    setFormData({ name: '', color: 'blue' })
+  }
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (editingType?.id) {
+      updateMutation.mutate({ ...editingType, ...formData })
+    } else {
+      createMutation.mutate(formData)
+    }
+    handleCloseDialog()
+  }
+
+  const handleDelete = (id: number) => {
+    deleteMutation.mutate(id)
+    setDeleteId(null)
+  }
+
+  // Paginazione
+  const totalPages = productTypes ? Math.ceil(productTypes.length / pageSize) : 0
+  const startIndex = (currentPage - 1) * pageSize
+  const endIndex = startIndex + pageSize
+  const paginatedTypes = productTypes?.slice(startIndex, endIndex) || []
+
+  // Reset pagina quando cambiano i dati
+  useEffect(() => {
+    if (productTypes && currentPage > totalPages && totalPages > 0) {
+      setCurrentPage(totalPages)
+    }
+  }, [productTypes, currentPage, totalPages])
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="text-center space-y-2">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+          <p className="text-sm text-muted-foreground">Caricamento...</p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <>
+      <div className="flex justify-between items-center">
+        <h3 className="text-lg font-semibold">Tipi Prodotto</h3>
+        <Button onClick={() => handleOpenDialog()} aria-label="Crea nuovo tipo prodotto">
+          <Plus className="h-4 w-4 mr-2" aria-hidden="true" />
+          Nuovo Tipo Prodotto
+        </Button>
+      </div>
+
+      {/* Tabella Desktop */}
+      <div className="hidden md:block rounded-md border overflow-x-auto">
+        <Table className="w-full">
+          <TableHeader>
+            <TableRow>
+              <TableHead className="align-middle w-[calc(70%-120px)]">Nome</TableHead>
+              <TableHead className="text-center align-middle w-[30%]">Colore</TableHead>
+              <TableHead className="text-center w-[120px] align-middle">Azioni</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {paginatedTypes.length > 0 ? (
+              paginatedTypes.map((type) => {
+                const colorInfo = PRODUCT_TYPE_COLORS[type.color]
+                return (
+                  <TableRow key={type.id}>
+                    <TableCell className="font-medium align-middle w-[calc(70%-120px)]">{type.name}</TableCell>
+                    <TableCell className="text-center align-middle w-[30%]">
+                      <div className="flex justify-center items-center">
+                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${colorInfo.bg} ${colorInfo.text}`}>
+                          {colorInfo.label}
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-center align-middle w-[120px]">
+                      <div className="flex justify-center gap-2">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleOpenDialog(type)}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setDeleteId(type.id!)}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                )
+              })
+            ) : (
+              <TableRow>
+                <TableCell colSpan={3} className="text-center text-muted-foreground">
+                  Nessun tipo prodotto. Crea il primo tipo prodotto.
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
+
+      {/* Card View Mobile */}
+      <div className="md:hidden space-y-4">
+        {paginatedTypes.length > 0 ? (
+          paginatedTypes.map((type) => {
+            const colorInfo = PRODUCT_TYPE_COLORS[type.color]
+            return (
+              <div key={type.id} className="border rounded-lg p-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-medium">{type.name}</h4>
+                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium mt-2 ${colorInfo.bg} ${colorInfo.text}`}>
+                      {colorInfo.label}
+                    </span>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleOpenDialog(type)}
+                      aria-label={`Modifica tipo prodotto ${type.name}`}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setDeleteId(type.id!)}
+                      aria-label={`Elimina tipo prodotto ${type.name}`}
+                    >
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )
+          })
+        ) : (
+          <div className="text-center text-muted-foreground py-8">
+            Nessun tipo prodotto. Crea il primo tipo prodotto.
+          </div>
+        )}
+      </div>
+
+      {/* Paginazione - Mostra solo se ci sono più elementi della pageSize */}
+      {productTypes && productTypes.length > pageSize && (
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-2">
+          <div className="text-sm text-muted-foreground">
+            Mostrando {startIndex + 1}-{Math.min(endIndex, productTypes.length)} di {productTypes.length} tipi
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              aria-label="Pagina precedente"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <div className="flex items-center gap-1">
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                let pageNum: number
+                if (totalPages <= 5) {
+                  pageNum = i + 1
+                } else if (currentPage <= 3) {
+                  pageNum = i + 1
+                } else if (currentPage >= totalPages - 2) {
+                  pageNum = totalPages - 4 + i
+                } else {
+                  pageNum = currentPage - 2 + i
+                }
+                return (
+                  <Button
+                    key={pageNum}
+                    variant={currentPage === pageNum ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setCurrentPage(pageNum)}
+                    aria-label={`Vai alla pagina ${pageNum}`}
+                    aria-current={currentPage === pageNum ? "page" : undefined}
+                  >
+                    {pageNum}
+                  </Button>
+                )
+              })}
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              aria-label="Pagina successiva"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="w-[95vw] sm:w-full max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              {editingType ? 'Modifica Tipo Prodotto' : 'Nuovo Tipo Prodotto'}
+            </DialogTitle>
+            <DialogDescription>
+              {editingType
+                ? 'Modifica i dettagli del tipo prodotto.'
+                : 'Crea un nuovo tipo prodotto (es. Fiore, Hash, Olio).'}
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSubmit}>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="product-type-name">Nome *</Label>
+                <Input
+                  id="product-type-name"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="product-type-color">Colore *</Label>
+                <Select
+                  value={formData.color}
+                  onValueChange={(value: string) => setFormData({ ...formData, color: value as ProductTypeColor })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleziona colore" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(PRODUCT_TYPE_COLORS).map(([key, value]) => (
+                      <SelectItem key={key} value={key}>
+                        <div className="flex items-center gap-2">
+                          <span className={`w-4 h-4 rounded-full ${value.bg} ${value.text}`} />
+                          {value.label}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={handleCloseDialog}>
+                Annulla
+              </Button>
+              <Button type="submit">Salva</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={deleteId !== null} onOpenChange={(open) => !open && setDeleteId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Elimina Tipo Prodotto</AlertDialogTitle>
+            <AlertDialogDescription>
+              Sei sicuro di voler eliminare questo tipo prodotto? Questa azione non può essere annullata.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annulla</AlertDialogCancel>
+            <AlertDialogAction onClick={() => deleteId && handleDelete(deleteId)}>
+              Elimina
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  )
+}

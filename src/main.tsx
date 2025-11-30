@@ -4,8 +4,12 @@ import { BrowserRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { AuthProvider } from './contexts/AuthContext'
+import { db } from './db'
 import './index.css'
 import App from './App.tsx'
+
+// Apri IndexedDB all'avvio per evitare latenza nelle query
+db.open().catch(console.error)
 
 const queryClient = new QueryClient({
   defaultOptions: {

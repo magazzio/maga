@@ -1,121 +1,126 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { db, Transaction } from '@/db'
-import { logger } from '@/lib/logger'
+import { toast } from '@/hooks/use-toast'
 
-const TRANSACTIONS_QUERY_KEY = ['transactions']
+// Query keys
+const TRANSACTIONS_KEY = ['transactions'] as const
 
-export function useTransactions(page: number = 1, pageSize: number = 20) {
+// GET - Lista movimenti
+export function useTransactions() {
   return useQuery({
-    queryKey: [...TRANSACTIONS_QUERY_KEY, page, pageSize],
+    queryKey: TRANSACTIONS_KEY,
     queryFn: async () => {
-      try {
-        const allTransactions = await db.transactions.orderBy('date').reverse().toArray()
-        const total = allTransactions.length
-        
-        const start = (page - 1) * pageSize
-        const end = start + pageSize
-        const paginatedTransactions = allTransactions.slice(start, end)
-        
-        return {
-          transactions: paginatedTransactions,
-          total,
-          page,
-          pageSize,
-          totalPages: Math.ceil(total / pageSize),
-        }
-      } catch (error) {
-        logger.error('Error loading transactions', error as Error, { page, pageSize })
-        throw error
-      }
+      return await db.transactions.orderBy('date').reverse().toArray()
     },
   })
 }
 
+// GET - Singolo movimento
 export function useTransaction(id: number) {
   return useQuery({
-    queryKey: [...TRANSACTIONS_QUERY_KEY, id],
+    queryKey: [...TRANSACTIONS_KEY, id],
     queryFn: async () => {
-      try {
-        return await db.transactions.get(id)
-      } catch (error) {
-        logger.error('Error fetching transaction', error as Error, { transactionId: id })
-        throw error
+      const transaction = await db.transactions.get(id)
+      if (!transaction) {
+        throw new Error('Movimento non trovato')
       }
+      return transaction
     },
     enabled: !!id,
   })
 }
 
+// CREATE - Crea movimento
 export function useCreateTransaction() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async (transaction: Omit<Transaction, 'id'>) => {
-      try {
-        const id = await db.transactions.add(transaction)
-        return id
-      } catch (error) {
-        logger.error('Error creating transaction', error as Error, { transactionTypeId: transaction.type_id })
-        throw error
-      }
+    mutationFn: async (data: Omit<Transaction, 'id'>) => {
+      const id = await db.transactions.add(data as Transaction)
+      return { ...data, id } as Transaction
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: TRANSACTIONS_QUERY_KEY })
-      queryClient.invalidateQueries({ queryKey: ['stock'] }) // Invalida stock perché viene calcolato dai movimenti
+      queryClient.invalidateQueries({ queryKey: TRANSACTIONS_KEY })
+      // Invalida anche i debiti tra entità, crediti clienti e stock quando si crea un movimento
+      queryClient.invalidateQueries({ queryKey: ['entity-net-balance'] })
+      queryClient.invalidateQueries({ queryKey: ['customer-credits'] })
+      queryClient.invalidateQueries({ queryKey: ['warehouse-stock'] })
+      queryClient.invalidateQueries({ queryKey: ['stock'] })
+      toast({
+        title: 'Movimento creato',
+        description: 'Il movimento è stato creato con successo.',
+      })
     },
-    onError: (error) => {
-      logger.error('Failed to create transaction', error as Error)
+    onError: (error: Error) => {
+      toast({
+        title: 'Errore',
+        description: error.message || 'Impossibile creare il movimento.',
+        variant: 'destructive',
+      })
     },
   })
 }
 
+// UPDATE - Modifica movimento
 export function useUpdateTransaction() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async (transaction: Transaction) => {
-      try {
-        if (!transaction.id) {
-          logger.error('Attempted to update transaction without ID', new Error('Transaction ID is required'), { transaction })
-          throw new Error('Transaction ID is required for update')
-        }
-        return await db.transactions.update(transaction.id, transaction)
-      } catch (error) {
-        logger.error('Error updating transaction', error as Error, { transactionId: transaction.id })
-        throw error
-      }
+    mutationFn: async ({ id, ...data }: Transaction) => {
+      if (!id) throw new Error('ID movimento mancante')
+      await db.transactions.update(id, data)
+      return { id, ...data } as Transaction
     },
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: TRANSACTIONS_QUERY_KEY })
-      queryClient.invalidateQueries({ queryKey: ['stock'] }) // Invalida stock perché viene calcolato dai movimenti
-      if (variables.id) {
-        queryClient.invalidateQueries({ queryKey: [...TRANSACTIONS_QUERY_KEY, variables.id] })
-      }
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: TRANSACTIONS_KEY })
+      queryClient.invalidateQueries({ queryKey: [...TRANSACTIONS_KEY, data.id] })
+      // Invalida anche i debiti tra entità, crediti clienti e stock quando si aggiorna un movimento
+      queryClient.invalidateQueries({ queryKey: ['entity-net-balance'] })
+      queryClient.invalidateQueries({ queryKey: ['customer-credits'] })
+      queryClient.invalidateQueries({ queryKey: ['warehouse-stock'] })
+      queryClient.invalidateQueries({ queryKey: ['stock'] })
+      toast({
+        title: 'Movimento aggiornato',
+        description: 'Il movimento è stato aggiornato con successo.',
+      })
     },
-    onError: (error) => {
-      logger.error('Failed to update transaction', error as Error)
+    onError: (error: Error) => {
+      toast({
+        title: 'Errore',
+        description: error.message || 'Impossibile aggiornare il movimento.',
+        variant: 'destructive',
+      })
     },
   })
 }
 
+// DELETE - Elimina movimento
 export function useDeleteTransaction() {
   const queryClient = useQueryClient()
 
   return useMutation({
     mutationFn: async (id: number) => {
-      try {
-        await db.transactions.delete(id)
-      } catch (error) {
-        logger.error('Error deleting transaction', error as Error, { transactionId: id })
-        throw error
-      }
+      await db.transactions.delete(id)
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: TRANSACTIONS_QUERY_KEY })
-      queryClient.invalidateQueries({ queryKey: ['stock'] }) // Invalida stock perché viene calcolato dai movimenti
+      queryClient.invalidateQueries({ queryKey: TRANSACTIONS_KEY })
+      // Invalida anche stock e calcoli quando si elimina un movimento
+      queryClient.invalidateQueries({ queryKey: ['warehouse-stock'] })
+      queryClient.invalidateQueries({ queryKey: ['stock'] })
+      queryClient.invalidateQueries({ queryKey: ['entity-net-balance'] })
+      queryClient.invalidateQueries({ queryKey: ['customer-credits'] })
+      queryClient.invalidateQueries({ queryKey: ['portfolio-balance'] })
+      toast({
+        title: 'Movimento eliminato',
+        description: 'Il movimento è stato eliminato con successo.',
+      })
     },
-    onError: (error) => {
-      logger.error('Failed to delete transaction', error as Error)
+    onError: (error: Error) => {
+      toast({
+        title: 'Errore',
+        description: error.message || 'Impossibile eliminare il movimento.',
+        variant: 'destructive',
+      })
     },
   })
 }

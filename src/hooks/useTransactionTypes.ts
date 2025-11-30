@@ -1,115 +1,111 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { db, TransactionType } from '@/db'
-import { logger } from '@/lib/logger'
+import { toast } from '@/hooks/use-toast'
 
-const TRANSACTION_TYPES_QUERY_KEY = ['transactionTypes']
+// Query keys
+const TRANSACTION_TYPES_KEY = ['transactionTypes'] as const
 
+// GET - Lista tipi movimento
 export function useTransactionTypes() {
   return useQuery({
-    queryKey: TRANSACTION_TYPES_QUERY_KEY,
+    queryKey: TRANSACTION_TYPES_KEY,
     queryFn: async () => {
-      try {
-        return await db.transactionTypes.toArray()
-      } catch (error) {
-        logger.error('Error loading transaction types', error as Error)
-        throw error
-      }
+      return await db.transactionTypes.toArray()
     },
+    staleTime: 5 * 60 * 1000,
   })
 }
 
+// GET - Singolo tipo movimento
 export function useTransactionType(id: number) {
   return useQuery({
-    queryKey: [...TRANSACTION_TYPES_QUERY_KEY, id],
+    queryKey: [...TRANSACTION_TYPES_KEY, id],
     queryFn: async () => {
-      try {
-        return await db.transactionTypes.get(id)
-      } catch (error) {
-        logger.error('Error fetching transaction type', error as Error, { transactionTypeId: id })
-        throw error
+      const type = await db.transactionTypes.get(id)
+      if (!type) {
+        throw new Error('Tipo movimento non trovato')
       }
+      return type
     },
     enabled: !!id,
   })
 }
 
+// CREATE - Crea tipo movimento
 export function useCreateTransactionType() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async (transactionType: Omit<TransactionType, 'id'>) => {
-      try {
-        const id = await db.transactionTypes.add(transactionType)
-        return id
-      } catch (error) {
-        logger.error('Error creating transaction type', error as Error, { transactionTypeName: transactionType.name })
-        throw error
-      }
+    mutationFn: async (data: Omit<TransactionType, 'id'>) => {
+      const id = await db.transactionTypes.add(data as TransactionType)
+      return { ...data, id } as TransactionType
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: TRANSACTION_TYPES_QUERY_KEY })
+      queryClient.invalidateQueries({ queryKey: TRANSACTION_TYPES_KEY })
+      toast({
+        title: 'Tipo movimento creato',
+        description: 'Il tipo movimento è stato creato con successo.',
+      })
     },
-    onError: (error) => {
-      logger.error('Failed to create transaction type', error as Error)
+    onError: (error: Error) => {
+      toast({
+        title: 'Errore',
+        description: error.message || 'Impossibile creare il tipo movimento.',
+        variant: 'destructive',
+      })
     },
   })
 }
 
+// UPDATE - Modifica tipo movimento
 export function useUpdateTransactionType() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async (transactionType: TransactionType) => {
-      try {
-        if (!transactionType.id) {
-          logger.error('Attempted to update transaction type without ID', new Error('TransactionType ID is required'), { transactionType })
-          throw new Error('TransactionType ID is required for update')
-        }
-        return await db.transactionTypes.update(transactionType.id, transactionType)
-      } catch (error) {
-        logger.error('Error updating transaction type', error as Error, { transactionTypeId: transactionType.id })
-        throw error
-      }
+    mutationFn: async ({ id, ...data }: TransactionType) => {
+      if (!id) throw new Error('ID tipo movimento mancante')
+      await db.transactionTypes.update(id, data)
+      return { id, ...data } as TransactionType
     },
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: TRANSACTION_TYPES_QUERY_KEY })
-      if (variables.id) {
-        queryClient.invalidateQueries({ queryKey: [...TRANSACTION_TYPES_QUERY_KEY, variables.id] })
-      }
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: TRANSACTION_TYPES_KEY })
+      queryClient.invalidateQueries({ queryKey: [...TRANSACTION_TYPES_KEY, data.id] })
+      toast({
+        title: 'Tipo movimento aggiornato',
+        description: 'Il tipo movimento è stato aggiornato con successo.',
+      })
     },
-    onError: (error) => {
-      logger.error('Failed to update transaction type', error as Error)
+    onError: (error: Error) => {
+      toast({
+        title: 'Errore',
+        description: error.message || 'Impossibile aggiornare il tipo movimento.',
+        variant: 'destructive',
+      })
     },
   })
 }
 
+// DELETE - Elimina tipo movimento
 export function useDeleteTransactionType() {
   const queryClient = useQueryClient()
 
   return useMutation({
     mutationFn: async (id: number) => {
-      try {
-        // Verifica se il tipo movimento è usato in transazioni
-        const transactionsCount = await db.transactions.where('type_id').equals(id).count()
-
-        if (transactionsCount > 0) {
-          throw new Error(
-            `Impossibile eliminare: questo tipo movimento è utilizzato in ${transactionsCount} movimento${transactionsCount !== 1 ? 'i' : ''}. ` +
-            'Elimina prima i movimenti che lo utilizzano.'
-          )
-        }
-
-        return await db.transactionTypes.delete(id)
-      } catch (error) {
-        logger.error('Error deleting transaction type', error as Error, { transactionTypeId: id })
-        throw error
-      }
+      await db.transactionTypes.delete(id)
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: TRANSACTION_TYPES_QUERY_KEY })
+      queryClient.invalidateQueries({ queryKey: TRANSACTION_TYPES_KEY })
+      toast({
+        title: 'Tipo movimento eliminato',
+        description: 'Il tipo movimento è stato eliminato con successo.',
+      })
     },
-    onError: (error) => {
-      logger.error('Failed to delete transaction type', error as Error)
+    onError: (error: Error) => {
+      toast({
+        title: 'Errore',
+        description: error.message || 'Impossibile eliminare il tipo movimento.',
+        variant: 'destructive',
+      })
     },
   })
 }

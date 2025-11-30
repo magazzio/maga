@@ -68,28 +68,51 @@ TableRow.displayName = "TableRow"
 const TableHead = React.forwardRef<
   HTMLTableCellElement,
   React.ThHTMLAttributes<HTMLTableCellElement>
->(({ className, ...props }, ref) => (
-  <th
-    ref={ref}
-    className={cn(
-      "h-12 px-4 align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0",
-      className
-    )}
-    {...props}
-  />
-))
+>(({ className = '', style, ...props }, ref) => {
+  const classNameStr = typeof className === 'string' ? className : ''
+  const hasTextAlign = classNameStr.includes('text-center') || classNameStr.includes('text-right') || classNameStr.includes('text-left')
+  
+  return (
+    <th
+      ref={ref}
+      className={cn(
+        "h-12 px-4 font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0",
+        !hasTextAlign && "text-center", // Default: center if no alignment specified
+        className
+      )}
+      style={{ 
+        verticalAlign: 'middle',
+        ...style
+      }}
+      {...props}
+    />
+  )
+})
 TableHead.displayName = "TableHead"
 
 const TableCell = React.forwardRef<
   HTMLTableCellElement,
   React.TdHTMLAttributes<HTMLTableCellElement>
->(({ className, ...props }, ref) => (
-  <td
-    ref={ref}
-    className={cn("p-4 align-middle [&:has([role=checkbox])]:pr-0", className)}
-    {...props}
-  />
-))
+>(({ className = '', style, ...props }, ref) => {
+  const classNameStr = typeof className === 'string' ? className : ''
+  const hasTextAlign = classNameStr.includes('text-center') || classNameStr.includes('text-right') || classNameStr.includes('text-left')
+  
+  return (
+    <td
+      ref={ref}
+      className={cn(
+        "p-4 [&:has([role=checkbox])]:pr-0",
+        !hasTextAlign && "text-center", // Default: center if no alignment specified
+        className
+      )}
+      style={{ 
+        verticalAlign: 'middle',
+        ...style
+      }}
+      {...props}
+    />
+  )
+})
 TableCell.displayName = "TableCell"
 
 const TableCaption = React.forwardRef<

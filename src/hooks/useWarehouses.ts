@@ -1,117 +1,122 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { db, Warehouse } from '@/db'
-import { logger } from '@/lib/logger'
+import { toast } from '@/hooks/use-toast'
 
-const WAREHOUSES_QUERY_KEY = ['warehouses']
+// Query keys
+const WAREHOUSES_KEY = ['warehouses'] as const
 
+// GET - Lista magazzini
 export function useWarehouses() {
   return useQuery({
-    queryKey: WAREHOUSES_QUERY_KEY,
+    queryKey: WAREHOUSES_KEY,
     queryFn: async () => {
-      try {
-        return await db.warehouses.toArray()
-      } catch (error) {
-        logger.error('Error loading warehouses', error as Error)
-        throw error
-      }
+      return await db.warehouses.toArray()
     },
+    staleTime: 5 * 60 * 1000,
   })
 }
 
+// GET - Singolo magazzino
 export function useWarehouse(id: number) {
   return useQuery({
-    queryKey: [...WAREHOUSES_QUERY_KEY, id],
-    queryFn: () => db.warehouses.get(id),
+    queryKey: [...WAREHOUSES_KEY, id],
+    queryFn: async () => {
+      const warehouse = await db.warehouses.get(id)
+      if (!warehouse) {
+        throw new Error('Magazzino non trovato')
+      }
+      return warehouse
+    },
     enabled: !!id,
   })
 }
 
+// GET - Magazzini per entità
+export function useWarehousesByEntity(entityId: number) {
+  return useQuery({
+    queryKey: [...WAREHOUSES_KEY, 'entity', entityId],
+    queryFn: async () => {
+      return await db.warehouses.where('entity_id').equals(entityId).toArray()
+    },
+    enabled: !!entityId,
+  })
+}
+
+// CREATE - Crea magazzino
 export function useCreateWarehouse() {
   const queryClient = useQueryClient()
-  
+
   return useMutation({
-    mutationFn: async (warehouse: Omit<Warehouse, 'id'>) => {
-      try {
-        return await db.warehouses.add(warehouse)
-      } catch (error) {
-        logger.error('Error creating warehouse', error as Error, { warehouse })
-        throw error
-      }
+    mutationFn: async (data: Omit<Warehouse, 'id'>) => {
+      const id = await db.warehouses.add(data as Warehouse)
+      return { ...data, id } as Warehouse
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: WAREHOUSES_QUERY_KEY })
+      queryClient.invalidateQueries({ queryKey: WAREHOUSES_KEY })
+      toast({
+        title: 'Magazzino creato',
+        description: 'Il magazzino è stato creato con successo.',
+      })
     },
-    onError: (error) => {
-      logger.error('Failed to create warehouse', error as Error)
+    onError: (error: Error) => {
+      toast({
+        title: 'Errore',
+        description: error.message || 'Impossibile creare il magazzino.',
+        variant: 'destructive',
+      })
     },
   })
 }
 
+// UPDATE - Modifica magazzino
 export function useUpdateWarehouse() {
   const queryClient = useQueryClient()
-  
+
   return useMutation({
-    mutationFn: async (warehouse: Warehouse) => {
-      try {
-        if (!warehouse.id) throw new Error('Warehouse ID is required')
-        return await db.warehouses.update(warehouse.id, warehouse)
-      } catch (error) {
-        logger.error('Error updating warehouse', error as Error, { warehouseId: warehouse.id })
-        throw error
-      }
+    mutationFn: async ({ id, ...data }: Warehouse) => {
+      if (!id) throw new Error('ID magazzino mancante')
+      await db.warehouses.update(id, data)
+      return { id, ...data } as Warehouse
     },
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: WAREHOUSES_QUERY_KEY })
-      if (variables.id) {
-        queryClient.invalidateQueries({ queryKey: [...WAREHOUSES_QUERY_KEY, variables.id] })
-      }
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: WAREHOUSES_KEY })
+      queryClient.invalidateQueries({ queryKey: [...WAREHOUSES_KEY, data.id] })
+      toast({
+        title: 'Magazzino aggiornato',
+        description: 'Il magazzino è stato aggiornato con successo.',
+      })
     },
-    onError: (error) => {
-      logger.error('Failed to update warehouse', error as Error)
+    onError: (error: Error) => {
+      toast({
+        title: 'Errore',
+        description: error.message || 'Impossibile aggiornare il magazzino.',
+        variant: 'destructive',
+      })
     },
   })
 }
 
+// DELETE - Elimina magazzino
 export function useDeleteWarehouse() {
   const queryClient = useQueryClient()
-  
+
   return useMutation({
     mutationFn: async (id: number) => {
-      try {
-        // Verifica se il magazzino è usato in transazioni (da o verso)
-        const transactionsFrom = await db.transactions.where('from_warehouse_id').equals(id).count()
-        const transactionsTo = await db.transactions.where('to_warehouse_id').equals(id).count()
-        const totalTransactions = transactionsFrom + transactionsTo
-        
-        // Verifica se il magazzino è presente nello stock
-        const stockCount = await db.stock.where('warehouse_id').equals(id).count()
-        
-        if (totalTransactions > 0 || stockCount > 0) {
-          const issues: string[] = []
-          if (totalTransactions > 0) {
-            issues.push(`${totalTransactions} movimento${totalTransactions !== 1 ? 'i' : ''}`)
-          }
-          if (stockCount > 0) {
-            issues.push(`presente nello stock`)
-          }
-          
-          throw new Error(
-            `Impossibile eliminare: questo magazzino è utilizzato in ${issues.join(' e ')}. ` +
-            'Elimina prima i movimenti correlati o rimuovi il magazzino dallo stock.'
-          )
-        }
-        
-        return await db.warehouses.delete(id)
-      } catch (error) {
-        logger.error('Error deleting warehouse', error as Error, { warehouseId: id })
-        throw error
-      }
+      await db.warehouses.delete(id)
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: WAREHOUSES_QUERY_KEY })
+      queryClient.invalidateQueries({ queryKey: WAREHOUSES_KEY })
+      toast({
+        title: 'Magazzino eliminato',
+        description: 'Il magazzino è stato eliminato con successo.',
+      })
     },
-    onError: (error) => {
-      logger.error('Failed to delete warehouse', error as Error)
+    onError: (error: Error) => {
+      toast({
+        title: 'Errore',
+        description: error.message || 'Impossibile eliminare il magazzino.',
+        variant: 'destructive',
+      })
     },
   })
 }

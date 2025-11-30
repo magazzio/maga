@@ -3,6 +3,7 @@
 Questo file contiene le preferenze personali su come comunicare e lavorare insieme. 
 
 **IMPORTANTE**: Leggere anche:
+- `.docs/errors-and-lessons.md` - ⚠️ **ERRORI COMMESSI - LEGGERE SEMPRE PRIMA DI IMPLEMENTARE**
 - `.docs/project-rules.md` - Regole tecniche specifiche del progetto
 - `.docs/project-goals.md` - Obiettivi e funzionalità del progetto
 - `.docs/project-decisions.md` - Decisioni architetturali prese
@@ -13,6 +14,13 @@ Questo file contiene le preferenze personali su come comunicare e lavorare insie
 - Quando ci sono tante domande, farne UNA SOLA per volta
 - Se una richiesta viola una regola: SEGNALARLO all'utente, NON correggere la regola subito
 - Se mi accorgo di NON aver seguito un processo o una regola: SEGNALARLO immediatamente all'utente, NON nascondere l'errore
+
+### REGOLA CRITICA: VERIFICARE PRIMA DI IMPLEMENTARE
+**MAI iniziare a implementare senza aver completato la FASE 1 del Processo 3 (Pre-Implementazione)**
+- Se non ho verificato la documentazione: FERMARSI e verificare
+- Se non sono sicuro dei requisiti: CHIEDERE prima di implementare
+- Se qualcosa non corrisponde ai requisiti: FERMARSI e avvisare
+- Se ho dubbi: CHIEDERE, non assumere
 
 ## Comunicazione
 - Risposte BREVI e DIRETTE
@@ -30,55 +38,199 @@ Questo file contiene le preferenze personali su come comunicare e lavorare insie
 - Errori importanti o che compromettono qualcosa: FERMARSI e avvisare
 - SOLO fix, NIENTE workaround
 
+## Variabili del Progetto (VERIFICARE SEMPRE)
+Prima di qualsiasi modifica o risposta importante, VERIFICARE OBBLIGATORIAMENTE:
+1. **Struttura Database** (`src/db/index.ts`): 
+   - Tabelle esistenti e loro relazioni
+   - Versioni database e migrazioni
+   - Vincoli e indici
+   - Tipi TypeScript per ogni entità
+2. **Hook Disponibili** (`src/hooks/`):
+   - Quali hook esistono per l'entità di interesse
+   - Come vengono usati nei componenti esistenti
+   - Dipendenze tra hook (es. useTransactions usa useTransactionTypes)
+3. **Componenti Correlati**:
+   - Quali pagine/componenti usano l'entità da modificare
+   - Pattern esistenti per funzionalità simili
+   - Come vengono gestiti errori/loading/stati
+4. **Documentazione Progetto** (`.docs/`):
+   - `project-data-structure.md` - Relazioni tra entità
+   - `project-goals.md` - Caso d'uso e priorità utente
+   - `project-rules.md` - Regole tecniche (performance, best practice)
+   - `project-review.md` - Problemi attuali, best practice e pattern qualità
+   - `errors-and-lessons.md` - Errori commessi e come evitarli
+5. **Utilizzo Reale**:
+   - Come l'utente usa realmente il gestionale (leggere project-goals.md)
+   - Quali sono le funzionalità core vs secondarie
+   - Quali sono le priorità dell'utente
+
 ## Processi di Lavoro (OBBLIGATORI)
 
 ### Processo 1: Verificare Qualcosa
 Quando l'utente chiede di verificare X o quando devo verificare prima di rispondere:
 1. **Identificare cosa verificare** esattamente
-2. **Scegliere strumento appropriato**:
+2. **Considerare contesto completo**:
+   - Se riguarda entità database: verificare `src/db/index.ts`
+   - Se riguarda hook: verificare `src/hooks/`
+   - Se riguarda componente: verificare come viene usato in altre pagine
+   - Se riguarda regola/pattern: verificare `.docs/project-rules.md` e documentazione
+3. **Scegliere strumento appropriato**:
    - Cartella/directory? → `list_dir`
    - File specifico? → `read_file` (leggere COMPLETO, non solo porzioni)
    - Cercare testo/codice? → `grep` o `codebase_search`
    - Verificare esistenza? → `glob_file_search` + `list_dir` se necessario
-3. **Eseguire verifica** - NON assumere mai
-4. **Fornire risultati concreti** - non supposizioni, dati reali
-5. **Se non trovo qualcosa**: verificare con strumenti alternativi prima di dire "non esiste"
+   - Cercare pattern/uso in codebase? → `codebase_search` o `grep` con pattern
+4. **Eseguire verifica** - NON assumere mai
+5. **Verificare relazioni/dipendenze**:
+   - Se entità database: verificare quali hook/componenti la usano
+   - Se hook: verificare quali componenti lo usano
+   - Se componente: verificare da dove viene importato/usato
+6. **Fornire risultati concreti** - non supposizioni, dati reali
+7. **Se non trovo qualcosa**: verificare con strumenti alternativi prima di dire "non esiste"
 
 ### Processo 2: Modificare un File
 Prima di qualsiasi modifica:
-1. **Leggere il file COMPLETO** con `read_file` (non solo offset/limit)
-2. **Comprendere il contesto**: cosa fa, come funziona, dipendenze
-3. **Identificare cosa modificare** esattamente
-4. **Verificare regole**: la modifica viola qualche regola? → SEGNALARE prima
-5. **Chiedere conferma** se necessario (vedi "Criteri per Chiedere Conferma")
-6. **Eseguire modifica** con `search_replace` o `write`
-7. **Verificare modifiche**:
-   - Rileggere la sezione modificata
-   - Controllare che sintassi sia corretta
-   - Verificare che logica sia coerente
-8. **Controllare errori** con `read_lints` sul file modificato
-9. **Testare se possibile**: se è un bug fix, verificare che risolva il problema
+1. **Verificare Variabili del Progetto** (vedi sezione sopra):
+   - Database: tabelle coinvolte, relazioni, vincoli
+   - Hook: quali esistono, come vengono usati
+   - Componenti: pagine/componenti che usano l'entità
+   - Documentazione: regole tecniche, best practice, problemi noti
+   - Utilizzo reale: come l'utente usa il gestionale
+2. **Leggere il file COMPLETO** con `read_file` (non solo offset/limit)
+3. **Analizzare impatto**:
+   - Quali altri file dipendono da questo?
+   - Quali hook/componenti verranno influenzati?
+   - C'è rischio di breaking changes?
+   - Serve migrazione database?
+4. **Cercare best practice** (se necessario):
+   - Per funzionalità nuove o complesse: cercare sul web best practice 2024/2025
+   - Verificare che approccio segua standard moderni
+   - Controllare documenti `.docs/project-review.md` per problemi noti e best practice
+5. **Comprendere il contesto**: cosa fa, come funziona, dipendenze
+6. **Identificare cosa modificare** esattamente e come integrarlo al meglio nella struttura esistente
+7. **Verificare regole**: la modifica viola qualche regola? → SEGNALARE prima
+8. **Chiedere conferma** se necessario (vedi "Criteri per Chiedere Conferma")
+9. **Eseguire modifica** con `search_replace` o `write`
+10. **Verificare modifiche**:
+    - Rileggere la sezione modificata
+    - Controllare che sintassi sia corretta
+    - Verificare che logica sia coerente
+    - Verificare che rispetti le regole tecniche (performance, best practice)
+11. **Controllare errori** con `read_lints` sul file modificato
+12. **Verificare impatto**: controllare che file correlati non abbiano errori
+13. **Testare se possibile**: se è un bug fix, verificare che risolva il problema
 
 ### Processo 3: Implementare Funzionalità
+
+**⚠️ REGOLA CRITICA: Leggere questa sezione PRIMA di iniziare qualsiasi implementazione**
+
 Quando l'utente chiede di implementare qualcosa:
-1. **Comprendere richiesta**: cosa esattamente vuole l'utente?
-2. **Verificare stato attuale**:
-   - Leggere file rilevanti COMPLETI
-   - Verificare struttura database (se applicabile)
-   - Verificare componenti esistenti simili
-3. **Pianificare implementazione**:
-   - Quali file modificare/creare?
-   - Quali dipendenze servono?
-   - Segue le regole tecniche (performance, best practice)?
-4. **Chiedere conferma** se implementazione è complessa o non chiara
-5. **Implementare step-by-step**:
-   - Creare/modificare file uno alla volta
-   - Dopo ogni file: verificare errori con `read_lints`
-   - Testare ogni passo se possibile
-6. **Verifica finale**:
-   - Tutti i file compilano senza errori?
-   - La funzionalità è completa?
-   - Segue tutte le regole (performance, best practice)?
+
+#### FASE 1: PRE-IMPLEMENTAZIONE (OBBLIGATORIA - NON SALTARE MAI)
+**Prima di scrivere QUALSIASI riga di codice:**
+
+0. **⚠️ LEGGERE COMPLETO `.docs/errors-and-lessons.md` PRIMA DI TUTTO**:
+   - Verificare errori già commessi simili a quello che sto per fare
+   - Verificare pattern da evitare
+   - Verificare pattern da seguire
+   - **USARE QUESTO FILE ATTIVAMENTE, NON SOLO COME RIFERIMENTO PASSIVO**
+
+1. **Leggere COMPLETO `project-data-structure.md`** per la funzionalità:
+   - Come DOVREBBE funzionare secondo requisiti?
+   - Quali entità coinvolte?
+   - Quali calcoli necessari? (es. saldi calcolati, stock calcolato)
+   - Quali relazioni tra entità?
+   - Cosa dice esattamente la documentazione sulla logica?
+
+2. **Leggere COMPLETO `project-goals.md`** per capire:
+   - Cosa vuole l'utente?
+   - Come si integra nel caso d'uso specifico?
+   - Quali sono le priorità?
+   - Quali funzionalità core vs secondarie?
+
+3. **Verificare Variabili del Progetto** (vedi sezione sopra):
+   - Database: quali tabelle servono, relazioni necessarie
+   - Schema database attuale: cosa esiste già? Cosa manca?
+   - Hook: esistono già o vanno creati? Pattern da seguire?
+   - Componenti: ci sono componenti simili da cui prendere esempio?
+   - Documentazione: cosa dicono regole tecniche e best practice?
+   - Utilizzo reale: come si integra nel flusso di lavoro dell'utente?
+
+4. **Verificare documentazione problemi noti**:
+   - Leggere `.docs/project-review.md` - problemi attuali, best practice e pattern?
+   - (errors-and-lessons.md già letto al punto 0)
+
+5. **Comprendere richiesta**: cosa esattamente vuole l'utente?
+   - Richiesta chiara o servono chiarimenti?
+   - Se non chiara: CHIEDERE prima di implementare
+
+6. **Verificare stato attuale**:
+   - Leggere file rilevanti COMPLETI (pagine, hook, database)
+   - Verificare struttura database: esistono già tabelle necessarie?
+   - Verificare componenti esistenti simili per seguire pattern coerente
+
+7. **Cercare best practice** (per funzionalità nuove o complesse):
+   - Cercare sul web best practice 2024/2025 per tipo di funzionalità
+   - Verificare standard del settore (se applicabile, es. gestionale magazzino)
+   - Controllare che approccio sia moderno e scalabile
+
+8. **Analizzare impatto**:
+   - Quali parti esistenti verranno influenzate?
+   - Serve migrazione database? Come gestirla?
+   - Ci sono breaking changes? Come evitarli?
+   - Quali hook/componenti dipendono da questo?
+
+9. **Pianificare implementazione**:
+   - Quali file modificare/creare? (lista precisa)
+   - Quali dipendenze servono? (npm packages, hook, componenti)
+   - Segue le regole tecniche (performance, best practice)? Verificare `project-rules.md`
+   - Serve paginazione? Virtualizzazione? Cache? (verificare `project-rules.md`)
+   - Gestione errori: come gestire? Logging strutturato? Error boundary?
+   - Logica di calcolo: come calcolare? (es. saldi, stock) - verificare `project-data-structure.md`
+
+10. **CHECKLIST PRE-IMPLEMENTAZIONE** (verificare TUTTO prima di iniziare):
+    - [ ] ⚠️ **Ho letto `errors-and-lessons.md` COMPLETO** e verificato errori simili?
+    - [ ] Ho letto `project-data-structure.md` per questa funzionalità?
+    - [ ] Ho letto `project-goals.md` per capire contesto?
+    - [ ] Ho verificato schema database attuale?
+    - [ ] Ho verificato documentazione problemi noti?
+    - [ ] Ho capito come DOVREBBE funzionare secondo requisiti?
+    - [ ] Ho verificato se logica coinvolge calcoli? Come devono essere fatti?
+    - [ ] Ho verificato pattern esistenti simili? (es. altre tabelle, altri form)
+    - [ ] Ho verificato regole tecniche (performance, best practice)?
+    - [ ] Ho pianificato tutti i file da modificare/creare?
+    - [ ] La richiesta è chiara? Se no, ho chiesto chiarimenti?
+
+11. **Chiedere conferma** se:
+    - Implementazione è complessa o non chiara
+    - Serve modificare struttura database
+    - Non sono sicuro di aver capito correttamente i requisiti
+    - C'è dubbio su come implementare qualcosa
+
+#### FASE 2: IMPLEMENTAZIONE
+12. **Implementare step-by-step**:
+    - Creare/modificare file uno alla volta
+    - Dopo ogni file: verificare errori con `read_lints`
+    - Verificare che segua pattern esistenti
+    - Testare ogni passo se possibile
+
+#### FASE 3: VERIFICA FINALE (OBBLIGATORIA - NON SALTARE MAI)
+13. **Verifica contro requisiti** (confrontare con documentazione):
+    - La funzionalità implementata corrisponde a `project-data-structure.md`?
+    - I calcoli sono fatti come richiesto? (es. saldi calcolati, non memorizzati)
+    - Rispetta tutte le relazioni tra entità?
+    - Rispetta il caso d'uso in `project-goals.md`?
+    - Gestione errori implementata? Logging strutturato?
+    - Accessibilità base (ARIA, keyboard navigation)?
+    - Responsive design verificato?
+
+14. **Verifica tecnica**:
+    - Tutti i file compilano senza errori? (`read_lints` su tutti i file modificati)
+    - La funzionalità è completa? Rispetta tutti i requisiti?
+    - Segue tutte le regole (performance, best practice)? Verificare `project-rules.md`
+    - Performance ottimizzate? (paginazione, cache, filtri su DB)
+
+15. **Se qualcosa non corrisponde ai requisiti**: FERMARSI e avvisare immediatamente
 
 ### Criteri per Chiedere Conferma
 **CHIEDERE conferma se**:
@@ -100,8 +252,11 @@ Quando l'utente chiede di implementare qualcosa:
 - Perdita dati possibile
 - Conflitto con regole tecniche importanti
 - Problema che richiede decisione dell'utente
+- **Implementazione non corrisponde ai requisiti nella documentazione**
+- **Non sono sicuro di aver capito correttamente i requisiti**
+- **Logica di calcolo non è chiara dai requisiti** (es. come calcolare saldi/stock)
+- **Struttura database non corrisponde a `project-data-structure.md`**
 
 **NON fermarsi se**:
 - Errore di sintassi banale (risolvere autonomamente)
 - Warning minori (documentare se necessario)
-

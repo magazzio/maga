@@ -1,159 +1,139 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { db, Product, generateProductId } from '@/db'
-import { logger } from '@/lib/logger'
+import { db, Product } from '@/db'
+import { toast } from '@/hooks/use-toast'
 
-const PRODUCTS_QUERY_KEY = ['products']
+// Query keys
+const PRODUCTS_KEY = ['products'] as const
 
-/**
- * Hook per ottenere prodotti paginati
- * Carica solo la pagina corrente per performance, a meno che non servano tutti per ricerca
- */
-export function useProducts(page: number = 1, pageSize: number = 10, activeOnly: boolean = false, loadAll: boolean = false) {
+// Genera ID prodotto automatico (P + 3 numeri casuali)
+async function generateProductId(): Promise<string> {
+  let id: string = ''
+  let exists = true
+  
+  while (exists) {
+    const randomNum = Math.floor(Math.random() * 1000).toString().padStart(3, '0')
+    id = `P${randomNum}`
+    const product = await db.products.get(id)
+    exists = !!product
+  }
+  
+  return id
+}
+
+// GET - Lista prodotti (tutti, filtro nella UI)
+export function useProducts() {
   return useQuery({
-    queryKey: [...PRODUCTS_QUERY_KEY, page, pageSize, activeOnly, loadAll],
+    queryKey: PRODUCTS_KEY,
     queryFn: async () => {
-      try {
-        let query = db.products.toCollection()
-        
-        // Filtra solo prodotti attivi se richiesto
-        if (activeOnly) {
-          query = query.filter(p => p.active !== false)
-        }
-        
-        const allProducts = await query.toArray()
-        const total = allProducts.length
-        
-        // Se loadAll è true, restituisci tutti (per ricerca globale)
-        // Altrimenti carica solo la pagina corrente
-        let products: Product[]
-        if (loadAll) {
-          products = allProducts
-        } else {
-          const start = (page - 1) * pageSize
-          const end = start + pageSize
-          products = allProducts.slice(start, end)
-        }
-        
-        return {
-          products: loadAll ? allProducts : products, // Tutti solo se richiesto
-          paginatedProducts: products,
-          total,
-          page,
-          pageSize,
-          totalPages: Math.ceil(total / pageSize),
-        }
-      } catch (error) {
-        logger.error('Error loading products', error as Error, { page, pageSize, activeOnly, loadAll })
-        throw error
-      }
+      return await db.products.toArray()
     },
+    staleTime: 5 * 60 * 1000,
   })
 }
 
-// Hook per ottenere solo prodotti attivi (per selezioni)
+// GET - Lista prodotti attivi (per selezioni nei form)
 export function useActiveProducts() {
   return useQuery({
-    queryKey: [...PRODUCTS_QUERY_KEY, 'active'],
+    queryKey: [...PRODUCTS_KEY, 'active'],
     queryFn: async () => {
-      const allProducts = await db.products.toArray()
-      return allProducts.filter(p => p.active !== false)
+      return await db.products.filter(p => p.active !== false).toArray()
     },
+    staleTime: 5 * 60 * 1000,
   })
 }
 
+// GET - Singolo prodotto
 export function useProduct(id: string) {
   return useQuery({
-    queryKey: [...PRODUCTS_QUERY_KEY, id],
-    queryFn: () => db.products.get(id),
+    queryKey: [...PRODUCTS_KEY, id],
+    queryFn: async () => {
+      const product = await db.products.get(id)
+      if (!product) {
+        throw new Error('Prodotto non trovato')
+      }
+      return product
+    },
     enabled: !!id,
   })
 }
 
+// CREATE - Crea prodotto
 export function useCreateProduct() {
   const queryClient = useQueryClient()
-  
+
   return useMutation({
-    mutationFn: async (product: Omit<Product, 'id'>) => {
-      try {
-        const id = await generateProductId()
-        return await db.products.add({ ...product, id })
-      } catch (error) {
-        logger.error('Error creating product', error as Error, { product })
-        throw error
-      }
+    mutationFn: async (data: Omit<Product, 'id'>) => {
+      const id = await generateProductId()
+      await db.products.add({ ...data, id } as Product)
+      return { ...data, id } as Product
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: PRODUCTS_QUERY_KEY })
+      queryClient.invalidateQueries({ queryKey: PRODUCTS_KEY })
+      toast({
+        title: 'Prodotto creato',
+        description: 'Il prodotto è stato creato con successo.',
+      })
     },
-    onError: (error) => {
-      logger.error('Failed to create product', error as Error)
+    onError: (error: Error) => {
+      toast({
+        title: 'Errore',
+        description: error.message || 'Impossibile creare il prodotto.',
+        variant: 'destructive',
+      })
     },
   })
 }
 
+// UPDATE - Modifica prodotto
 export function useUpdateProduct() {
   const queryClient = useQueryClient()
-  
+
   return useMutation({
-    mutationFn: async (product: Product) => {
-      try {
-        if (!product.id) throw new Error('Product ID is required')
-        return await db.products.update(product.id, product)
-      } catch (error) {
-        logger.error('Error updating product', error as Error, { productId: product.id })
-        throw error
-      }
+    mutationFn: async ({ id, ...data }: Product) => {
+      if (!id) throw new Error('ID prodotto mancante')
+      await db.products.update(id, data)
+      return { id, ...data } as Product
     },
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: PRODUCTS_QUERY_KEY })
-      if (variables.id) {
-        queryClient.invalidateQueries({ queryKey: [...PRODUCTS_QUERY_KEY, variables.id] })
-      }
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: PRODUCTS_KEY })
+      queryClient.invalidateQueries({ queryKey: [...PRODUCTS_KEY, data.id] })
+      toast({
+        title: 'Prodotto aggiornato',
+        description: 'Il prodotto è stato aggiornato con successo.',
+      })
     },
-    onError: (error) => {
-      logger.error('Failed to update product', error as Error)
+    onError: (error: Error) => {
+      toast({
+        title: 'Errore',
+        description: error.message || 'Impossibile aggiornare il prodotto.',
+        variant: 'destructive',
+      })
     },
   })
 }
 
+// DELETE - Elimina prodotto definitivamente
 export function useDeleteProduct() {
   const queryClient = useQueryClient()
-  
+
   return useMutation({
     mutationFn: async (id: string) => {
-      try {
-        // Verifica se il prodotto è usato in transazioni
-        const transactionsCount = await db.transactions.where('product_id').equals(id).count()
-        
-        // Verifica se il prodotto è presente nello stock
-        const stockCount = await db.stock.where('product_id').equals(id).count()
-        
-        if (transactionsCount > 0 || stockCount > 0) {
-          const issues: string[] = []
-          if (transactionsCount > 0) {
-            issues.push(`${transactionsCount} movimento${transactionsCount !== 1 ? 'i' : ''}`)
-          }
-          if (stockCount > 0) {
-            issues.push(`presente nello stock`)
-          }
-          
-          throw new Error(
-            `Impossibile eliminare: questo prodotto è utilizzato in ${issues.join(' e ')}. ` +
-            'Elimina prima i movimenti correlati o rimuovi il prodotto dallo stock.'
-          )
-        }
-        
-        return await db.products.delete(id)
-      } catch (error) {
-        logger.error('Error deleting product', error as Error, { productId: id })
-        throw error
-      }
+      await db.products.delete(id)
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: PRODUCTS_QUERY_KEY })
+      queryClient.invalidateQueries({ queryKey: PRODUCTS_KEY })
+      queryClient.invalidateQueries({ queryKey: [...PRODUCTS_KEY, 'active'] })
+      toast({
+        title: 'Prodotto eliminato',
+        description: 'Il prodotto è stato eliminato definitivamente.',
+      })
     },
-    onError: (error) => {
-      logger.error('Failed to delete product', error as Error)
+    onError: (error: Error) => {
+      toast({
+        title: 'Errore',
+        description: error.message || 'Impossibile eliminare il prodotto.',
+        variant: 'destructive',
+      })
     },
   })
 }
