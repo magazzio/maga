@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { motion } from 'framer-motion'
-import { Plus, Pencil, Trash2, Search, ArrowUpDown, ArrowUp, ArrowDown, Filter, X, Bookmark, BookmarkCheck, Info } from 'lucide-react'
+import { Plus, Pencil, Trash2, Search, ArrowUpDown, ArrowUp, ArrowDown, X, Bookmark } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -63,6 +62,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useProductTypes } from '@/hooks/useProductTypes'
 import { Product, PRODUCT_TYPE_COLORS, db } from '@/db'
 import { useToast } from '@/hooks/use-toast'
+import { logger } from '@/lib/logger'
 
 type SortField = 'id' | 'strain' | 'tipo' | 'price_per_gram' | 'active' | null
 type SortDirection = 'asc' | 'desc' | null
@@ -121,7 +121,7 @@ function ProductDetailsContent({ product, typeInfo }: { product: Product; typeIn
         setStockData({ total, byWarehouse })
         setTransactionsData({ total: transactions.length, lastTransaction })
       } catch (error) {
-        console.error('Errore nel caricamento dettagli:', error)
+        logger.error('Errore nel caricamento dettagli prodotto', error as Error, { productId: product.id })
       } finally {
         setLoading(false)
       }
@@ -261,7 +261,9 @@ export default function Prodotti() {
     const saved = localStorage.getItem('prodotti-saved-filters')
     return saved ? JSON.parse(saved) : []
   })
-  const { data, isLoading, error } = useProducts(page, pageSize)
+  // Carica tutti i prodotti solo se ci sono filtri/ricerca attivi (usa searchTerm, non debounced, per determinare subito)
+  const hasActiveFilters = !!searchTerm.trim() || filterTipo !== 'all' || filterStato !== 'all' || !!filterPriceMin || !!filterPriceMax
+  const { data, isLoading, error } = useProducts(page, pageSize, false, hasActiveFilters)
   const { data: productTypes } = useProductTypes()
   const createMutation = useCreateProduct()
   const updateMutation = useUpdateProduct()
@@ -311,11 +313,21 @@ export default function Prodotti() {
   }, [isDialogOpen])
 
   // Validazione form in tempo reale
-  const validateForm = () => {
+  const validateForm = async () => {
     const errors: { strain?: string; tipo_id?: string; price_per_gram?: string } = {}
     
     if (!formData.strain.trim()) {
       errors.strain = 'Il nome strain è obbligatorio'
+    } else {
+      // Controlla duplicati (strain deve essere unico)
+      const trimmedStrain = formData.strain.trim()
+      const existingProduct = data?.products.find(
+        p => p.strain.toLowerCase() === trimmedStrain.toLowerCase() && 
+        (!editingProduct || p.id !== editingProduct.id)
+      )
+      if (existingProduct) {
+        errors.strain = 'Esiste già un prodotto con questo strain'
+      }
     }
     
     if (!formData.tipo_id || formData.tipo_id === 0) {
@@ -323,8 +335,9 @@ export default function Prodotti() {
     }
     
     if (formData.price_per_gram !== undefined && formData.price_per_gram !== null) {
-      if (formData.price_per_gram < 0) {
-        errors.price_per_gram = 'Il prezzo non può essere negativo'
+      const price = Number(formData.price_per_gram)
+      if (isNaN(price) || price <= 0) {
+        errors.price_per_gram = 'Il prezzo deve essere un numero maggiore di zero'
       }
     }
     
@@ -335,7 +348,7 @@ export default function Prodotti() {
   // Validazione in tempo reale
   useEffect(() => {
     if (isDialogOpen) {
-      validateForm()
+      validateForm().catch(() => {}) // Ignora errori nella validazione in tempo reale
     }
   }, [formData, isDialogOpen])
 
@@ -513,7 +526,7 @@ export default function Prodotti() {
       })
       setConfirmToggleDialog({ open: false, product: null })
     } catch (error) {
-      console.error('Error toggling product active:', error)
+      logger.error('Error toggling product active', error as Error, { productId: product.id })
       toast({
         title: 'Errore',
         description: 'Errore nell\'aggiornamento dello stato del prodotto',
@@ -602,21 +615,11 @@ export default function Prodotti() {
     })
   }
 
-  const deleteSavedFilter = (index: number) => {
-    const updated = savedFilters.filter((_, i) => i !== index)
-    setSavedFilters(updated)
-    localStorage.setItem('prodotti-saved-filters', JSON.stringify(updated))
-    toast({
-      title: 'Filtro eliminato',
-      description: 'Filtro salvato eliminato',
-      variant: 'success',
-    })
-  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    if (!validateForm()) {
+    if (!(await validateForm())) {
       toast({
         title: 'Errore di validazione',
         description: 'Controlla i campi evidenziati',
@@ -671,10 +674,11 @@ export default function Prodotti() {
       })
       setConfirmDeleteDialog({ open: false, productId: null })
     } catch (error) {
-      console.error('Error deleting product:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Errore nell\'eliminazione del prodotto'
+      logger.error('Error deleting product', error as Error, { productId: confirmDeleteDialog.productId })
       toast({
-        title: 'Errore',
-        description: 'Errore nell\'eliminazione del prodotto',
+        title: 'Impossibile eliminare',
+        description: errorMessage,
         variant: 'destructive',
       })
     }
@@ -692,7 +696,6 @@ export default function Prodotti() {
     setPage(1)
   }
 
-  const hasActiveFilters = filterTipo !== 'all' || filterStato !== 'all' || filterPriceMin || filterPriceMax || debouncedSearchTerm.trim()
 
   if (productTypes && productTypes.length === 0) {
     return (

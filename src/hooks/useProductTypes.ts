@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { db, ProductType, ProductTypeColor } from '@/db'
+import { db, ProductType } from '@/db'
 
 const PRODUCT_TYPES_QUERY_KEY = ['productTypes']
 
@@ -63,6 +63,16 @@ export function useDeleteProductType() {
   
   return useMutation({
     mutationFn: async (id: number) => {
+      // Verifica se il tipo prodotto è usato da prodotti
+      const productsUsingType = await db.products.where('tipo_id').equals(id).count()
+      
+      if (productsUsingType > 0) {
+        throw new Error(
+          `Impossibile eliminare: questo tipo prodotto è utilizzato da ${productsUsingType} prodotto${productsUsingType !== 1 ? 'i' : ''}. ` +
+          'Elimina o modifica prima i prodotti che lo utilizzano.'
+        )
+      }
+      
       return await db.productTypes.delete(id)
     },
     onSuccess: () => {

@@ -79,6 +79,36 @@ Per ogni errore/lezione:
 
 **Lezione**: Verificare sempre se la struttura dei file è ottimale per il lavoro, non chiedere all'utente ma analizzare autonomamente.
 
+#### 7. Import db Mancante in ClientDetailsContent
+**Data**: Gennaio 2025
+**Errore**: Il componente `ClientDetailsContent` in `Clienti.tsx` usava `db` senza importarlo, causando errore `db is not defined`.
+
+**Causa**: Quando ho aggiunto l'import di `db` all'inizio del file, non ho verificato che fosse disponibile anche nel componente interno `ClientDetailsContent`.
+
+**Soluzione**: Verificato che l'import di `db` fosse presente all'inizio del file (già presente alla riga 60).
+
+**Lezione**: Verificare sempre che tutti gli import necessari siano presenti e accessibili ai componenti che li usano.
+
+#### 8. SelectItem con Value Vuoto
+**Data**: Gennaio 2025
+**Errore**: In `Clienti.tsx` c'era un `<SelectItem value="">` che causava errore perché Radix UI non permette valori vuoti.
+
+**Causa**: Non ho verificato i requisiti di Radix UI per i SelectItem.
+
+**Soluzione**: Cambiato il value da `""` a `"none"` e aggiornato la logica per gestire questo valore speciale.
+
+**Lezione**: Verificare sempre i requisiti delle librerie UI utilizzate, specialmente per componenti con validazioni specifiche.
+
+#### 9. Non Aver Verificato Esistenza Cartelle
+**Data**: Gennaio 2025
+**Errore**: Ho affermato che la cartella `.docs` non esisteva, quando in realtà esiste e contiene tutti i file di documentazione.
+
+**Causa**: Ho usato `glob_file_search` con un pattern errato che non ha trovato i file, ma non ho verificato direttamente con `list_dir`.
+
+**Soluzione**: Verificato con `list_dir` che la cartella esiste.
+
+**Lezione**: Non fare assunzioni basate su ricerche parziali. Verificare sempre direttamente l'esistenza di file e cartelle prima di affermare che non esistono.
+
 ---
 
 ## Pattern da Evitare

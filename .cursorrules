@@ -12,6 +12,7 @@ Questo file contiene le preferenze personali su come comunicare e lavorare insie
 - NON aggiungere regole di cui non abbiamo discusso
 - Quando ci sono tante domande, farne UNA SOLA per volta
 - Se una richiesta viola una regola: SEGNALARLO all'utente, NON correggere la regola subito
+- Se mi accorgo di NON aver seguito un processo o una regola: SEGNALARLO immediatamente all'utente, NON nascondere l'errore
 
 ## Comunicazione
 - Risposte BREVI e DIRETTE
@@ -28,4 +29,79 @@ Questo file contiene le preferenze personali su come comunicare e lavorare insie
 - Errori banali: risolvere autonomamente
 - Errori importanti o che compromettono qualcosa: FERMARSI e avvisare
 - SOLO fix, NIENTE workaround
+
+## Processi di Lavoro (OBBLIGATORI)
+
+### Processo 1: Verificare Qualcosa
+Quando l'utente chiede di verificare X o quando devo verificare prima di rispondere:
+1. **Identificare cosa verificare** esattamente
+2. **Scegliere strumento appropriato**:
+   - Cartella/directory? → `list_dir`
+   - File specifico? → `read_file` (leggere COMPLETO, non solo porzioni)
+   - Cercare testo/codice? → `grep` o `codebase_search`
+   - Verificare esistenza? → `glob_file_search` + `list_dir` se necessario
+3. **Eseguire verifica** - NON assumere mai
+4. **Fornire risultati concreti** - non supposizioni, dati reali
+5. **Se non trovo qualcosa**: verificare con strumenti alternativi prima di dire "non esiste"
+
+### Processo 2: Modificare un File
+Prima di qualsiasi modifica:
+1. **Leggere il file COMPLETO** con `read_file` (non solo offset/limit)
+2. **Comprendere il contesto**: cosa fa, come funziona, dipendenze
+3. **Identificare cosa modificare** esattamente
+4. **Verificare regole**: la modifica viola qualche regola? → SEGNALARE prima
+5. **Chiedere conferma** se necessario (vedi "Criteri per Chiedere Conferma")
+6. **Eseguire modifica** con `search_replace` o `write`
+7. **Verificare modifiche**:
+   - Rileggere la sezione modificata
+   - Controllare che sintassi sia corretta
+   - Verificare che logica sia coerente
+8. **Controllare errori** con `read_lints` sul file modificato
+9. **Testare se possibile**: se è un bug fix, verificare che risolva il problema
+
+### Processo 3: Implementare Funzionalità
+Quando l'utente chiede di implementare qualcosa:
+1. **Comprendere richiesta**: cosa esattamente vuole l'utente?
+2. **Verificare stato attuale**:
+   - Leggere file rilevanti COMPLETI
+   - Verificare struttura database (se applicabile)
+   - Verificare componenti esistenti simili
+3. **Pianificare implementazione**:
+   - Quali file modificare/creare?
+   - Quali dipendenze servono?
+   - Segue le regole tecniche (performance, best practice)?
+4. **Chiedere conferma** se implementazione è complessa o non chiara
+5. **Implementare step-by-step**:
+   - Creare/modificare file uno alla volta
+   - Dopo ogni file: verificare errori con `read_lints`
+   - Testare ogni passo se possibile
+6. **Verifica finale**:
+   - Tutti i file compilano senza errori?
+   - La funzionalità è completa?
+   - Segue tutte le regole (performance, best practice)?
+
+### Criteri per Chiedere Conferma
+**CHIEDERE conferma se**:
+- Implementazione complessa (modifica di 3+ file)
+- Funzionalità nuova significativa
+- Modifica struttura database
+- Cambio architetturale importante
+- Violazione potenziale di regole tecniche
+
+**NON chiedere conferma se**:
+- Fix bug semplice e chiaro
+- Modifica banale (typo, formato)
+- Modifica locale in un singolo file
+- L'utente ha già dato istruzioni specifiche
+
+### Criteri per Fermarsi e Avvisare
+**FERMARSI e avvisare immediatamente se**:
+- Errore che compromette funzionalità esistenti
+- Perdita dati possibile
+- Conflitto con regole tecniche importanti
+- Problema che richiede decisione dell'utente
+
+**NON fermarsi se**:
+- Errore di sintassi banale (risolvere autonomamente)
+- Warning minori (documentare se necessario)
 

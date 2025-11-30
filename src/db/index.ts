@@ -37,18 +37,24 @@ export interface Product {
   price_per_gram?: number // Costo per grammo (€/g) - costo fisso quando acquista da Driplug
 }
 
+export interface Entity {
+  id?: number
+  name: string
+  description?: string
+}
+
 export interface Warehouse {
   id?: number
   name: string
   description?: string
-  owner: 'Driplug' | 'Meetdrip'
+  entity_id: number // Riferimento all'entità
 }
 
 export interface Portfolio {
   id?: number
   name: string
   description?: string
-  owner: 'Driplug' | 'Meetdrip'
+  entity_id: number // Riferimento all'entità
 }
 
 export interface TransactionType {
@@ -116,6 +122,7 @@ export interface StockMovement {
 class MagazzDatabase extends Dexie {
   productTypes!: Table<ProductType>
   products!: Table<Product>
+  entities!: Table<Entity>
   warehouses!: Table<Warehouse>
   portfolios!: Table<Portfolio>
   transactionTypes!: Table<TransactionType>
@@ -216,7 +223,7 @@ class MagazzDatabase extends Dexie {
         customers: '++id, name',
         stockMovements: '++id, transaction_id, product_id, warehouse_id, date'
       })
-      .upgrade(async (tx) => {
+      .upgrade(async (_tx) => {
         // Migrazione: i prodotti esistenti avranno price_per_gram undefined (opzionale)
         // Nessuna modifica necessaria
       })
@@ -234,9 +241,86 @@ class MagazzDatabase extends Dexie {
         customers: '++id, name, is_referral, referred_by',
         stockMovements: '++id, transaction_id, product_id, warehouse_id, date'
       })
-      .upgrade(async (tx) => {
+      .upgrade(async (_tx) => {
         // Migrazione: i clienti esistenti avranno is_referral, referral_color e referred_by undefined (opzionali)
         // Nessuna modifica necessaria
+      })
+    
+    // Versione 7: aggiunto Entity, modificato Warehouse e Portfolio per usare entity_id
+    this.version(7)
+      .stores({
+        productTypes: '++id, name, color',
+        products: 'id, tipo_id, strain, active',
+        entities: '++id, name',
+        warehouses: '++id, name, entity_id',
+        portfolios: '++id, name, entity_id',
+        transactionTypes: '++id, name',
+        transactions: '++id, type_id, date, product_id, from_warehouse_id, to_warehouse_id',
+        stock: '++id, product_id, warehouse_id',
+        customers: '++id, name, is_referral, referred_by',
+        stockMovements: '++id, transaction_id, product_id, warehouse_id, date'
+      })
+      .upgrade(async (tx) => {
+        // Migrazione: converti owner in entità (solo se ci sono dati esistenti)
+        // Non crea entità predefinite - l'utente le creerà manualmente
+        
+        const entityMap = new Map<string, number>()
+        
+        // 1. Migra warehouses: crea entità solo per owner esistenti nei warehouses
+        const warehouses = await tx.table('warehouses').toArray()
+        const uniqueOwners = new Set<string>()
+        
+        for (const warehouse of warehouses) {
+          const owner = (warehouse as any).owner
+          if (owner && typeof owner === 'string') {
+            uniqueOwners.add(owner)
+          }
+        }
+        
+        // Crea entità solo per gli owner trovati nei warehouses esistenti
+        for (const owner of uniqueOwners) {
+          if (!entityMap.has(owner)) {
+            const entityId = await tx.table('entities').add({ 
+              name: owner, 
+              description: `Entità ${owner}` 
+            })
+            entityMap.set(owner, entityId as number)
+          }
+        }
+        
+        // Aggiorna warehouses con entity_id
+        for (const warehouse of warehouses) {
+          const owner = (warehouse as any).owner
+          if (owner && entityMap.has(owner)) {
+            await tx.table('warehouses').update(warehouse.id!, { 
+              entity_id: entityMap.get(owner)!,
+            } as any)
+          }
+        }
+        
+        // 2. Migra portfolios: crea entità solo per owner esistenti nei portfolios
+        const portfolios = await tx.table('portfolios').toArray()
+        
+        for (const portfolio of portfolios) {
+          const owner = (portfolio as any).owner
+          if (owner && typeof owner === 'string' && !entityMap.has(owner)) {
+            const entityId = await tx.table('entities').add({ 
+              name: owner, 
+              description: `Entità ${owner}` 
+            })
+            entityMap.set(owner, entityId as number)
+          }
+        }
+        
+        // Aggiorna portfolios con entity_id
+        for (const portfolio of portfolios) {
+          const owner = (portfolio as any).owner
+          if (owner && entityMap.has(owner)) {
+            await tx.table('portfolios').update(portfolio.id!, { 
+              entity_id: entityMap.get(owner)!,
+            } as any)
+          }
+        }
       })
   }
 }
@@ -268,6 +352,7 @@ export async function forceDatabaseUpgrade(): Promise<{ preserved: number; lost:
   try {
     // Salva i dati che vogliamo preservare
     const productTypes = await db.productTypes.toArray().catch(() => [])
+    const entities = await db.entities.toArray().catch(() => [])
     const warehouses = await db.warehouses.toArray().catch(() => [])
     const portfolios = await db.portfolios.toArray().catch(() => [])
     const transactionTypes = await db.transactionTypes.toArray().catch(() => [])
@@ -296,6 +381,9 @@ export async function forceDatabaseUpgrade(): Promise<{ preserved: number; lost:
     }
     
     // Nota: i prodotti non vengono preservati perché lo schema è incompatibile
+    if (entities.length > 0) {
+      await db.entities.bulkAdd(entities)
+    }
     if (warehouses.length > 0) {
       await db.warehouses.bulkAdd(warehouses)
     }
@@ -309,7 +397,7 @@ export async function forceDatabaseUpgrade(): Promise<{ preserved: number; lost:
       await db.customers.bulkAdd(customers)
     }
     
-    const preservedCount = productTypes.length + warehouses.length + portfolios.length + 
+    const preservedCount = productTypes.length + entities.length + warehouses.length + portfolios.length + 
                           transactionTypes.length + customers.length
     
     return {

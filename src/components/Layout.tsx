@@ -67,6 +67,7 @@ export default function Layout({ children }: LayoutProps) {
               size="icon"
               onClick={logout}
               className="transition-all duration-200 hover:bg-destructive/10 hover:text-destructive"
+              aria-label="Esci dall'applicazione"
             >
               <LogOut className="h-5 w-5" />
             </Button>

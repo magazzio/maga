@@ -35,13 +35,14 @@ Struttura dati adattata alle esigenze specifiche del caso d'uso.
 ### 2. Warehouses (Magazzini)
 **Campi:**
 - `id` - Identificativo univoco
-- `name` - Nome magazzino (es. "Driplug", "Meetdrip")
+- `name` - Nome magazzino (es. "Magazzino Driplug", "Magazzino Meetdrip")
 - `description` - Descrizione (opzionale)
 - `owner` - Proprietario (Driplug/Meetdrip)
 
-**Magazzini predefiniti:**
-- Magazzino Driplug
-- Magazzino Meetdrip
+**Gestione:**
+- I magazzini vengono creati e gestiti manualmente dall'utente via interfaccia (sezione Impostazioni)
+- L'utente può creare, modificare ed eliminare magazzini secondo le proprie esigenze
+- Non ci sono magazzini predefiniti: tutto è configurabile dall'utente
 
 **Vista personalizzata:** Le viste magazzini e casse sono personalizzate per entità (Meetdrip o Driplug).
 
@@ -67,16 +68,17 @@ Struttura dati adattata alle esigenze specifiche del caso d'uso.
 ### 4. Portfolios (Portafogli/Casse)
 **Campi:**
 - `id` - Identificativo univoco
-- `name` - Nome portafoglio (es. "Driplug", "Meetdrip")
+- `name` - Nome portafoglio (es. "Portafoglio Driplug", "Portafoglio Meetdrip")
 - `description` - Descrizione (opzionale)
 - `balance` - Saldo (calcolato dai movimenti)
 - `cash_balance` - Saldo cash (solo movimenti cash)
 - `debt_balance` - Saldo debiti non saldati (solo debiti pending)
 - `owner` - Proprietario (Driplug/Meetdrip)
 
-**Portafogli predefiniti:**
-- Portafoglio Driplug
-- Portafoglio Meetdrip
+**Gestione:**
+- I portafogli vengono creati e gestiti manualmente dall'utente via interfaccia (sezione Impostazioni)
+- L'utente può creare, modificare ed eliminare portafogli secondo le proprie esigenze
+- Non ci sono portafogli predefiniti: tutto è configurabile dall'utente
 
 **Vista personalizzata:** Le viste magazzini e casse sono personalizzate per entità (Meetdrip o Driplug).
 

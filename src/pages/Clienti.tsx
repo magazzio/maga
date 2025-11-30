@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo } from 'react'
-import { motion } from 'framer-motion'
 import { Plus, Pencil, Trash2, Search, ArrowUpDown, ArrowUp, ArrowDown, Info } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -57,8 +56,9 @@ import {
   useUpdateClient,
   useDeleteClient,
 } from '@/hooks/useClients'
-import { Customer, REFERRAL_COLORS, ReferralColor, db } from '@/db'
+import { Customer, REFERRAL_COLORS, db } from '@/db'
 import { useToast } from '@/hooks/use-toast'
+import { logger } from '@/lib/logger'
 
 type SortField = 'id' | 'name' | null
 type SortDirection = 'asc' | 'desc' | null
@@ -256,7 +256,9 @@ export default function Clienti() {
     return saved ? parseInt(saved) : 10
   })
   
-  const { data, isLoading, error } = useClients(page, pageSize)
+  // Carica tutti i clienti solo se c'è ricerca o ordinamento attivo (usa searchTerm, non debounced, per determinare subito)
+  const hasActiveFilters = !!searchTerm.trim() || sortField !== null
+  const { data, isLoading, error } = useClients(page, pageSize, hasActiveFilters)
   const createMutation = useCreateClient()
   const updateMutation = useUpdateClient()
   const deleteMutation = useDeleteClient()
@@ -312,11 +314,21 @@ export default function Clienti() {
   }, [isDialogOpen])
 
   // Validazione form in tempo reale
-  const validateForm = () => {
+  const validateForm = async () => {
     const errors: { name?: string } = {}
     
     if (!formData.name.trim()) {
       errors.name = 'Il nome è obbligatorio'
+    } else {
+      // Controlla duplicati (nome deve essere unico)
+      const trimmedName = formData.name.trim()
+      const existingClient = data?.clients.find(
+        c => c.name.toLowerCase() === trimmedName.toLowerCase() && 
+        (!editingClient || c.id !== editingClient.id)
+      )
+      if (existingClient) {
+        errors.name = 'Esiste già un cliente con questo nome'
+      }
     }
     
     setFormErrors(errors)
@@ -325,7 +337,7 @@ export default function Clienti() {
 
   useEffect(() => {
     if (isDialogOpen) {
-      validateForm()
+      validateForm().catch(() => {}) // Ignora errori nella validazione in tempo reale
     }
   }, [formData, isDialogOpen])
 
@@ -457,7 +469,7 @@ export default function Clienti() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    if (!validateForm()) {
+    if (!(await validateForm())) {
       toast({
         title: 'Errore di validazione',
         description: 'Controlla i campi evidenziati',
@@ -487,7 +499,7 @@ export default function Clienti() {
       }
       handleCloseDialog()
     } catch (error) {
-      console.error('Error saving client:', error)
+      logger.error('Error saving client', error as Error, { client: editingClient?.id || 'new' })
       toast({
         title: 'Errore',
         description: 'Errore nel salvataggio del cliente',
@@ -512,10 +524,11 @@ export default function Clienti() {
       })
       setConfirmDeleteDialog({ open: false, clientId: null })
     } catch (error) {
-      console.error('Error deleting client:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Errore nell\'eliminazione del cliente'
+      logger.error('Error deleting client', error as Error, { clientId: confirmDeleteDialog.clientId })
       toast({
-        title: 'Errore',
-        description: 'Errore nell\'eliminazione del cliente',
+        title: 'Impossibile eliminare',
+        description: errorMessage,
         variant: 'destructive',
       })
     }
@@ -529,7 +542,6 @@ export default function Clienti() {
     setPage(1)
   }
 
-  const hasActiveFilters = debouncedSearchTerm.trim()
 
   return (
     <TooltipProvider>

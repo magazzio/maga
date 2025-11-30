@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Construction } from 'lucide-react'
 
 export default function Dashboard() {
   return (
@@ -15,35 +16,25 @@ export default function Dashboard() {
         </p>
       </motion.div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {[
-          { title: 'Magazzini', description: '2 attivi', value: '2' },
-          { title: 'Prodotti', description: 'In totale', value: '0' },
-          { title: 'Portafogli', description: '2 attivi', value: '2' },
-          { title: 'Movimenti', description: 'Oggi', value: '0' },
-        ].map((item, index) => (
-          <motion.div
-            key={item.title}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, delay: index * 0.1 }}
-          >
-            <Card className="hover:shadow-lg transition-shadow duration-200">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">
-                  {item.title}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{item.value}</div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {item.description}
-                </p>
-              </CardContent>
-            </Card>
-          </motion.div>
-        ))}
-      </div>
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <Construction className="h-6 w-6 text-muted-foreground" />
+            <div>
+              <CardTitle>In Costruzione</CardTitle>
+              <CardDescription>
+                La dashboard sarà disponibile dopo l'implementazione dei Movimenti e Portafogli
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <p className="text-muted-foreground">
+            La dashboard mostrerà statistiche in tempo reale su magazzini, prodotti, portafogli e movimenti.
+            Completa prima le sezioni Movimenti e Portafogli per abilitare questa funzionalità.
+          </p>
+        </CardContent>
+      </Card>
     </div>
   )
 }
