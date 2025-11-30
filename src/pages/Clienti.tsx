@@ -209,12 +209,6 @@ function ClientDetailsContent({ client, data }: { client: Customer; data: { clie
       <div className="pt-4 border-t">
         <Label className="text-sm font-medium text-muted-foreground mb-2 block">Informazioni Base</Label>
         <div className="grid grid-cols-2 gap-4 text-sm">
-          {client.contact_info && (
-            <div>
-              <span className="text-muted-foreground">Contatti:</span>{' '}
-              <span className="font-medium">{client.contact_info}</span>
-            </div>
-          )}
           <div>
             <span className="text-muted-foreground">È Referral:</span>{' '}
             <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ml-1 ${
@@ -239,7 +233,6 @@ export default function Clienti() {
   const [editingClient, setEditingClient] = useState<Customer | null>(null)
   const [formData, setFormData] = useState<Omit<Customer, 'id'>>({
     name: '',
-    contact_info: '',
     notes: '',
     is_referral: false,
     referral_color: undefined,
@@ -290,7 +283,6 @@ export default function Clienti() {
       setFormErrors({})
       setFormData({
         name: '',
-        contact_info: '',
         notes: '',
         is_referral: false,
         referral_color: undefined,
@@ -347,7 +339,6 @@ export default function Clienti() {
       clients = clients.filter(
         (client) =>
           client.name.toLowerCase().includes(search) ||
-          (client.contact_info && client.contact_info.toLowerCase().includes(search)) ||
           (client.notes && client.notes.toLowerCase().includes(search))
       )
     }
@@ -432,7 +423,6 @@ export default function Clienti() {
       setEditingClient(client)
       setFormData({
         name: client.name || '',
-        contact_info: client.contact_info || '',
         notes: client.notes || '',
         is_referral: client.is_referral || false, // Mantieni lo status esistente
         referral_color: client.referral_color,
@@ -442,7 +432,6 @@ export default function Clienti() {
       setEditingClient(null)
       setFormData({
         name: '',
-        contact_info: '',
         notes: '',
         is_referral: false,
         referral_color: undefined,
@@ -458,7 +447,6 @@ export default function Clienti() {
     setFormErrors({})
     setFormData({
       name: '',
-      contact_info: '',
       notes: '',
       is_referral: false,
       referral_color: undefined,
@@ -579,7 +567,7 @@ export default function Clienti() {
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Cerca per nome, contatti o note..."
+                  placeholder="Cerca per nome o note..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-10"
@@ -644,7 +632,6 @@ export default function Clienti() {
                             Nome {getSortIcon('name')}
                           </button>
                         </TableHead>
-                        <TableHead className="text-center">Contatti</TableHead>
                         <TableHead className="text-center">Note</TableHead>
                         <TableHead className="text-center">Referral</TableHead>
                         <TableHead className="text-center">Azioni</TableHead>
@@ -664,23 +651,6 @@ export default function Clienti() {
                             >
                               {client.name}
                             </button>
-                          </TableCell>
-                          <TableCell className="text-center align-middle max-w-xs">
-                            {client.contact_info ? (
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <div className="flex items-center justify-center gap-1.5 cursor-help">
-                                    <span className="truncate">{client.contact_info}</span>
-                                    <Info className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
-                                  </div>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <p className="max-w-xs">{client.contact_info}</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            ) : (
-                              <span className="text-muted-foreground">-</span>
-                            )}
                           </TableCell>
                           <TableCell className="text-center align-middle max-w-xs">
                             {client.notes ? (
@@ -847,18 +817,6 @@ export default function Clienti() {
                   {formErrors.name && (
                     <p className="text-sm text-destructive">{formErrors.name}</p>
                   )}
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="contact_info">Informazioni di contatto</Label>
-                  <Input
-                    id="contact_info"
-                    value={formData.contact_info}
-                    onChange={(e) =>
-                      setFormData({ ...formData, contact_info: e.target.value })
-                    }
-                    placeholder="Telefono, email, indirizzo..."
-                    aria-label="Informazioni contatto"
-                  />
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="notes">Note</Label>

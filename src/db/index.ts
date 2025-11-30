@@ -2,7 +2,7 @@ import Dexie, { Table } from 'dexie'
 
 // Types
 export type ProductTypeColor = 'blue' | 'green' | 'amber' | 'red' | 'purple'
-export type ReferralColor = 'cyan' | 'indigo' | 'pink' | 'orange' | 'teal'
+export type ReferralColor = 'cyan' | 'indigo' | 'pink' | 'orange' | 'yellow'
 
 export interface ProductType {
   id?: number
@@ -25,7 +25,7 @@ export const REFERRAL_COLORS: Record<ReferralColor, { label: string; bg: string;
   indigo: { label: 'Indaco', bg: 'bg-indigo-100', text: 'text-indigo-800' },
   pink: { label: 'Rosa', bg: 'bg-pink-100', text: 'text-pink-800' },
   orange: { label: 'Arancione', bg: 'bg-orange-100', text: 'text-orange-800' },
-  teal: { label: 'Verde Acqua', bg: 'bg-teal-100', text: 'text-teal-800' },
+  yellow: { label: 'Giallo', bg: 'bg-yellow-100', text: 'text-yellow-800' },
 }
 
 export interface Product {
